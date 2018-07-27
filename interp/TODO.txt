@@ -16,5 +16,5 @@ Numerical analysis for nonzero k
 Test machine with multipeakons + nonzero k
 Write up!
 
-create_dnn_from_dir needs completing, in particular the processor data
+
 RegressorAverager needs processors added to it
