@@ -1,15 +1,20 @@
 
 To-get-things-working ideas:
 Do more with auxiliary functions? See how third_reg goes with log either end.
-add l1/l2 regularisation?
+** add l1/l2 regularisation?
+coarser grids?
 tighter to zero initialisation
+** try 1000x10 networks again?  - on more VMs?
+** try old training method
+** Switch to ELUs
 ask to predict difference from some kind of interpolation
-Don't ask for predictions around the peak
 Mix of optimisation algorithms
 
 TODO:
-coarser grids?
 Algebra for multipeakons
 Numerical analysis for nonzero k
 Test machine with multipeakons + nonzero k
 Write up!
+
+create_dnn_from_dir needs completing, in particular the processor data
+RegressorAverager needs processors added to it
