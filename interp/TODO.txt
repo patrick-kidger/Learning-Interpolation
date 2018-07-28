@@ -15,6 +15,3 @@ Algebra for multipeakons
 Numerical analysis for nonzero k
 Test machine with multipeakons + nonzero k
 Write up!
-
-
-RegressorAverager needs processors added to it
