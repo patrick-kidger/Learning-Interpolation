@@ -1,4 +1,4 @@
-# Camassa-Holm Project
+# Camassa&ndash;Holm Project
 
 A project seeking to investigate the possibility of using machine learning to perform better interpolation of solutions to PDEs. The essential idea is that solutions to a particular PDE may tend to take a particular form &ndash; knowing this, can we do better than simple polynomial interpolation?
 
