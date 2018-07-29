@@ -7,7 +7,9 @@ Our PDE of choice for this project is the [Camassa&ndash;Holm equation](https://
 ### Installation
 
 Assumptions:
-* You are running Ubuntu with a desktop (e.g. [xfce](https://xfce.org/)) installed. Other Linux distros will probably work but haven't been tested. Things will probably mostly work on Windows; the `conda activate camassaholm` command below will probably have to be replaced with just `activate camassaholm`, and the 
+* You are running Ubuntu with a desktop (e.g. [xfce](https://xfce.org/)) installed.
+  * Other Linux distros will probably work but haven't been tested.
+  * Windows will probably mostly work but also hasn't been tested. The `conda activate camassaholm` command below will probably have to be replaced with just `activate camassaholm`.
 * You already have [conda](https://conda.io/miniconda.html) installed.
 * You already have [git](https://git-scm.com/) installed.
 * Both git and conda are on the PATH.
@@ -17,7 +19,8 @@ First we set up the virtual environment:
 ```
 conda create -n camassaholm
 conda activate camassaholm
-conda install -c conda-forge tensorflow scikit-learn jupyterlab fenics
+conda install -c conda-forge numpy tensorflow scikit-learn jupyterlab fenics matplotlib ipympl nodejs
+jupyter labextension install @jupyter-widgets/jupyterlab-manager
 ```
 
 (Note: It's important to install both `jupyterlab` and `fenics` in the same line; things won't work otherwise.)
