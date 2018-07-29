@@ -1,5 +1,6 @@
-__pycache__/
-.ipynb_checkpoints/
+__pycache__
+.ipynb_checkpoints
 *.py[cod]
-.idea/
-saved_models/
+.idea
+**/saved_models/*/
+TODO.txt
