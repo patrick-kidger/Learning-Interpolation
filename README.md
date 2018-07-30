@@ -17,13 +17,11 @@ Assumptions:
 First we set up the virtual environment:
 
 ```
-conda create -n camassaholm
+conda create -n camassaholm -c conda-forge --file requirements.txt
 conda activate camassaholm
-conda install -c conda-forge numpy tensorflow scikit-learn jupyterlab fenics matplotlib ipympl nodejs
 jupyter labextension install @jupyter-widgets/jupyterlab-manager
 ```
 
-(Note: It's important to install both `jupyterlab` and `fenics` in the same line; things won't work otherwise.)
 
 Now we install [tools](https://github.com/patrick-kidger/tools). Whilst in a directory on your PYTHONPATH, run:
 
