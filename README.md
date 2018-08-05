@@ -23,10 +23,12 @@ jupyter labextension install @jupyter-widgets/jupyterlab-manager
 ```
 
 
-Now we install [tools](https://github.com/patrick-kidger/tools). Whilst in a directory on your PYTHONPATH, run:
+Now we install [tools](https://github.com/patrick-kidger/tools), and checkout the version used for this project (which is at time of writing the most recent commit.) Whilst in a directory on your PYTHONPATH, run:
 
 ```
 git clone https://github.com/patrick-kidger/tools.git
+cd tools
+git checkout 00e3f8009e0a0b4288812a6da78272edf6a6475e
 ```
 
 Install the repo itself (anywhere you like):
