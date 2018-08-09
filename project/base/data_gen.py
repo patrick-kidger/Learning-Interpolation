@@ -311,7 +311,8 @@ y_peak = np.array([5.34308947, 5.28992485, 5.23728921, 5.18517732, 5.13358394,
 
 def _gen_one_data(_, gen_one_data):
     # Here begins hackery.
-    # See the comments in BatchData.from_func
+    # See the comments in BatchData.from_func, BatchData._batch_setup and 
+    # BatchData._batch.
     return gen_one_data()
 
 
@@ -336,60 +337,23 @@ class BatchData:
         producing batches of that size.
         """
         
-        # Call the function once so we know what its size and type is.
-        X, y = gen_one_data()
-        Xdtype = X.dtype
-        ydtype = y.dtype
-        X_batch_shape = (batch_size, *X.shape)
-        y_batch_shape = (batch_size, *y.shape)
-        
-        # So this function's implementation probably needs a little explaning.
-        # Generating data is _slow_, because in general we have to use Python
-        # to do so. So we have to use tf.py_func to feed that into TensorFlow,
-        # which in turn only runs its function inside the one interpreter.
-        # So in order to achieve speedup via multiprocessing, we have to do
-        # multiprocessing the Python way rather than the TensorFlow way.
-        pool = cls._get_pool()
-        
-        # Now we have this strange looking partial of a global function. When
-        # we come to generate our data later, this is the function that we'll
-        # be calling. It's a global function because the default Python
-        # multiprocessing package is only capable of pickling top-level
-        # functions. It then has to be a partial of this function so that we
-        # can pass it gen_one_data, i.e. the function that we're actually
-        # calling. The redundant _ argument in _gen_one_data is the the value
-        # from the iterable (defined next), which is necessary to tell the
-        # multiprocessing map how many times we want to call the function.
-        gen_data = ft.partial(_gen_one_data, gen_one_data=gen_one_data)
-        # We've defined both gen_data and batch_list here so that
-        # gen_batch_data, below, doesn't need to recreate them each time.
-        # Although to be honest this is probably one of those tiny unnoticable
-        # speedups.
-        batch_list = list(range(batch_size))
-        
-        # Next we wrap everything else in a _wrapper function, because it is
+        # First we wrap everything else in a _wrapper function, because it is
         # creating Tensorflow's Datasets, and this has to be done inside the
         # session, which doesn't start until we're inside the Estimator.
-        # (As a side note, there's no particular reason to put the above three 
-        # lines of code either inside or outside of this wrapper; they happen 
-        # to be outside.)
         def _wrapper():
-            # Now we vectorize our data generation. Note that we have to do
-            # this here (and not via the Dataset.batch method), because we're
-            # doing Python multiprocessing, not TensorFlow multiprocessing:
-            # and we're using multiprocessing to generate multiple elements
-            # of a batch simulataneously.
-            def gen_batch_data():
-                results = pool.map(gen_data, batch_list)
-                X_batch = np.empty(X_batch_shape, dtype=Xdtype)
-                y_batch = np.empty(y_batch_shape, dtype=ydtype)
-                X_batch[:], y_batch[:] = zip(*results)
-                return X_batch, y_batch
-            
-            # Now wrap gen_batch_data to turn it into a generator.
+            # We define all of these things here, rather than in cls._batch,
+            # so that it doesn't need to recreate them each time. Some of this
+            # is probably one of those tiny unnoticable speedups, though.
+            (pool, gen_data_pool, batch_list, 
+             Xdtype, ydtype, 
+             X_batch_shape, y_batch_shape) = cls._batch_setup(gen_one_data,
+                                                              batch_size)
+            # Now wrap cls._batch to turn it into a generator.
             def generator():
                 while True:
-                    yield gen_batch_data()
+                    yield cls._batch(pool, gen_data_pool, batch_list, 
+                                     Xdtype, ydtype, 
+                                     X_batch_shape, y_batch_shape)
             
             # And finally produces our Dataset from this generator. Note that
             # each element of this Dataset is itself a batch; we don't need to
@@ -407,18 +371,73 @@ class BatchData:
         # the DNN, it has to be called later on.
         return lambda: tfd.Dataset.from_tensors(data).repeat()
     
-    @staticmethod
-    def batch(gen_one_data, batch_size=1):
+    @classmethod
+    def batch(cls, gen_one_data, batch_size=1):
         """Takes a function :gen_one_data: which returns a generator and a
         :batch_size:, and returns a batch of that size. Its return value is
-        not wrapped in a tf.data.Dataset; furthermore the batch generation
-        does not using threading, so this is not the method to use for
-        anything time-sensitive; try from_func instead.
+        not wrapped in a tf.data.Dataset.
         """
-        X_batch = []
-        y_batch = []
-        for _ in range(batch_size):
-            X, y = gen_one_data()
-            X_batch.append(X)
-            y_batch.append(y)
-        return np.array(X_batch), np.array(y_batch)
+        (pool, gen_data_pool, batch_list, 
+         Xdtype, ydtype, 
+         X_batch_shape, y_batch_shape) = cls._batch_setup(gen_one_data, 
+                                                          batch_size)
+        return cls._batch(pool, gen_data_pool, batch_list, Xdtype, ydtype,
+                          X_batch_shape, y_batch_shape)
+        
+    @classmethod
+    def _batch_setup(cls, gen_one_data, batch_size):
+        """Here we handle setting things up for generating batches. We do
+        this once here so that it doesn't all need to be done every time.
+        (Although finding the type and shape of X and y is the only truly
+        slow part.)
+        """
+        
+        # Generating data is _slow_, because in general we have to use Python
+        # to do so. So we have to use tf.py_func to feed that into TensorFlow
+        # (this is what is called by tf.data.Dataset.from_generator). But
+        # tf.py_func only runs its function inside the one and only Python
+        # interpreter that is has access to, namely the one that it is called
+        # from itself.
+        # So in order to achieve speedup via multiprocessing, we have to do
+        # multiprocessing the Python way rather than the TensorFlow way.
+        pool = cls._get_pool()
+        # Now we have this strange looking partial of a global function. When
+        # we come to generate our data later, this is the function that we'll
+        # be calling. _gen_one_data is a global function because the default
+        # Python multiprocessing package is only capable of pickling top-level
+        # functions. It then has to be a partial of this function so that we
+        # can pass it gen_one_data, i.e. the function that we're actually
+        # calling. The redundant _ argument in _gen_one_data is the the value
+        # from the iterable batch_list, which is necessary to tell the
+        # multiprocessing map how many times we want to call the function.
+        gen_data_pool = ft.partial(_gen_one_data, gen_one_data=gen_one_data)
+        batch_list = list(range(batch_size))
+        
+        # Call the function once so we know what its size and type is.
+        X, y = gen_one_data()
+        Xdtype = X.dtype
+        ydtype = y.dtype
+        X_batch_shape = (batch_size, *X.shape)
+        y_batch_shape = (batch_size, *y.shape)
+        
+        return (pool, gen_data_pool, batch_list, Xdtype, ydtype, 
+                X_batch_shape, y_batch_shape)
+        
+    @staticmethod
+    def _batch(pool, gen_data_pool, batch_list, Xdtype, ydtype, 
+               X_batch_shape, y_batch_shape):
+        """Actually generates a batch of data using the objects supplied
+        to it from _batch_setup.
+        """
+        
+        # We vectorize our data generation. Note that we have to do this
+        # this here (and not via the Dataset.batch method), because we're
+        # doing Python multiprocessing, not TensorFlow multiprocessing:
+        # and we're using multiprocessing to generate multiple elements
+        # of a batch simulataneously.
+        results = pool.map(gen_data_pool, batch_list)
+        X_batch = np.empty(X_batch_shape, dtype=Xdtype)
+        y_batch = np.empty(y_batch_shape, dtype=ydtype)
+        X_batch[:], y_batch[:] = zip(*results)
+        
+        return X_batch, y_batch

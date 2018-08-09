@@ -179,7 +179,14 @@ class FenicsSolution(dg.SolutionBase):
     
     defaults = tools.Object(t=0, T=10, a=0, b=20, 
                             fineness_t=grid.fine_grid_sep.t, 
-                            fineness_x=grid.fine_grid_sep.x)
+                            fineness_x=grid.fine_grid_sep.x,
+                            min_num_peaks=2, max_num_peaks=3, 
+                            min_wobbly=2, max_wobbly=4,
+                            wobbly_const_coef_lim=np.pi, 
+                            wobbly_lin_coef_lim=1.7, 
+                            peak_range_offset=0.15, 
+                            peak_offset=3,
+                            min_height=3, max_height=10)
     
     def __init__(self, initial_condition, 
                  t=defaults.t, T=defaults.T, 
@@ -187,7 +194,8 @@ class FenicsSolution(dg.SolutionBase):
                  fineness_t=defaults.fineness_t,  
                  fineness_x=defaults.fineness_x, 
                  line_up=True,
-                 smoothing_thresh=0.01):
+                 smoothing_thresh=0.01,
+                 **kwargs):
         """Numerically determines the solution to the Camassa--Holm equation
         from the given :initial_condition:.
         
@@ -270,6 +278,8 @@ class FenicsSolution(dg.SolutionBase):
         self.xvals = xvals
         self.uvals = uvals
         
+        super(FenicsSolution, self).__init__(**kwargs)
+        
     def __call__(self, point):
         t, x = point
         t = int(t / self.fineness_t)
@@ -277,10 +287,18 @@ class FenicsSolution(dg.SolutionBase):
         return self.uvals[t, x]
     
     @classmethod
-    def gen(cls, min_num_peaks=2, max_num_peaks=3, min_wobbly=2, max_wobbly=4,
-            wobbly_const_coef_lim=np.pi, wobbly_lin_coef_lim=1.7, 
-            peak_range_offset=0.15, peak_offset=3,
-            min_height=3, max_height=10, **kwargs):
+    def gen(cls, 
+            min_num_peaks=defaults.min_num_peaks, 
+            max_num_peaks=defaults.max_num_peaks, 
+            min_wobbly=defaults.min_wobbly, 
+            max_wobbly=defaults.max_wobbly,
+            wobbly_const_coef_lim=defaults.wobbly_const_coef_lim, 
+            wobbly_lin_coef_lim=defaults.wobbly_lin_coef_lim, 
+            peak_range_offset=defaults.peak_range_offset, 
+            peak_offset=defaults.peak_offset,
+            min_height=defaults.min_height, 
+            max_height=defaults.max_height, 
+            **kwargs):
         """Generates a random solution of this form, and a random location
         around which to evaluate it.
         
@@ -325,6 +343,26 @@ class FenicsSolution(dg.SolutionBase):
         Any additional kwargs (e.g. :a:, :b:) are passed on to __init__.
         """
         
+        self = cls._gen_solution(min_num_peaks, max_num_peaks, 
+                                 min_wobbly, max_wobbly, 
+                                 wobbly_const_coef_lim, wobbly_lin_coef_lim,
+                                 peak_range_offset, peak_offset,
+                                 min_height, max_height, 
+                                 **kwargs)
+        point = cls._gen_point(**kwargs)
+        
+        return point, self
+        
+    @classmethod
+    def _gen_solution(cls, 
+                      min_num_peaks, max_num_peaks, 
+                      min_wobbly, max_wobbly, 
+                      wobbly_const_coef_lim, wobbly_lin_coef_lim,
+                      peak_range_offset, peak_offset,
+                      min_height, max_height, 
+                      **kwargs):
+        """Handles the generation of the numerical solution."""
+        
         a = kwargs.get('a', cls.defaults.a)
         b = kwargs.get('b', cls.defaults.b)
         
@@ -367,6 +405,13 @@ class FenicsSolution(dg.SolutionBase):
             else:
                 converged = True
                 
+        return self
+       
+    @classmethod
+    def _gen_point(cls, **kwargs):
+        """Handles the generation of a particular point."""
+        a = kwargs.get('a', cls.defaults.a)
+        b = kwargs.get('b', cls.defaults.b)
         t = kwargs.get('t', cls.defaults.t)
         T = kwargs.get('T', cls.defaults.T)
         fineness_t = kwargs.get('fineness_t', cls.defaults.fineness_t)
@@ -375,5 +420,130 @@ class FenicsSolution(dg.SolutionBase):
         x_point = np.random.uniform(a, b - grid.coarse_grid_sep.x)
         t_point = tools.round_mult(t_point, fineness_t, 'down')
         x_point = tools.round_mult(x_point, fineness_x, 'down')
-        return (t_point, x_point), self
+        return t_point, x_point
+
     
+# So from a software dev point of view, this is an interesting problem.
+# I want to return the same instance of FenicsSolution several times
+# over before throwing it away... which is of course very similar in
+# nature to the infamous Singleton. Which isn't a problem which has
+# one clear good way to handle it, to my knowledge.
+# So this probably isn't the 'best' solution, but things are simple
+# enough that it is at least the easiest to implement.
+class FenicsSolutionRepeater:
+    """Provides for a more efficient way to use FEniCS-based solutions.
+    
+    As the numerical analysis with FEniCS is slow, then we want to reuse
+    the same solution multiple times when generating data: we'll just
+    sample different spacetime regions of the solution to generate
+    different training samples.
+    
+    This class accepts a :max_repeat: argument on initialisation,
+    specifying how many times a solution should be reused before another
+    one is generated. Other than that argument, initialise this class 
+    with the arguments that FenicsSolution.gen accepts; subsequent calls
+    of this instance will return a point and solution just like
+    FenicsSolution.gen would.
+    """
+    
+    defaults = FenicsSolution.defaults
+    
+    def __init__(self, 
+                 max_repeat=200, 
+                 min_num_peaks=defaults.min_num_peaks, 
+                 max_num_peaks=defaults.max_num_peaks, 
+                 min_wobbly=defaults.min_wobbly, 
+                 max_wobbly=defaults.max_wobbly,
+                 wobbly_const_coef_lim=defaults.wobbly_const_coef_lim, 
+                 wobbly_lin_coef_lim=defaults.wobbly_lin_coef_lim, 
+                 peak_range_offset=defaults.peak_range_offset, 
+                 peak_offset=defaults.peak_offset,
+                 min_height=defaults.min_height, 
+                 max_height=defaults.max_height, 
+                 **kwargs):
+        self.max_repeat = max_repeat
+        self.current_count = 0
+        
+        self.min_num_peaks = min_num_peaks
+        self.max_num_peaks = max_num_peaks
+        self.min_wobbly = min_wobbly
+        self.max_wobbly = max_wobbly
+        self.wobbly_const_coef_lim = wobbly_const_coef_lim
+        self.wobbly_lin_coef_lim = wobbly_lin_coef_lim
+        self.peak_range_offset = peak_range_offset
+        self.peak_offset = peak_offset
+        self.min_height = min_height
+        self.max_height = max_height
+        self.kwargs = kwargs
+        
+        self.solution = None
+        self._gen_solution()
+        
+    def __call__(self):
+        if self.current_count >= self.max_repeat:
+            self._gen_solution()
+            self.current_count = 1
+        else:
+            self.current_count += 1
+        point = FenicsSolution._gen_point(**self.kwargs)
+        return point, self.solution
+        
+    
+    def _gen_solution(self):
+        self.solution = FenicsSolution._gen_solution(self.min_num_peaks, 
+                                                     self.max_num_peaks,
+                                                     self.min_wobbly, 
+                                                     self.max_wobbly,
+                                                     self.wobbly_const_coef_lim, 
+                                                     self.wobbly_lin_coef_lim,
+                                                     self.peak_range_offset, 
+                                                     self.peak_offset,
+                                                     self.min_height, 
+                                                     self.max_height, 
+                                                     **self.kwargs)
+
+        
+class GeneralSolutionGenerator:
+    """Now that we have FEniCS-based solutions alongside the simple
+    peakon solutions, we need a wrapper around all of them that will
+    randomly give us a (point, solution) pair from any of them.
+    
+    This is that wrapper.
+    """
+    def __init__(self, fenics_num=5, two_peakon_num=4, one_peakon_num=1, 
+                 **kwargs):
+        # Screw dependency inversion, creating a 
+        # 'GeneralSolutionGeneratorFactory' is OTT ravioli code for
+        # this problem. (Things are already looking a bit ravioli-ish
+        # as it is!)
+        self.fenics_solution_repeater = FenicsSolutionRepeater(**kwargs)
+        self.gen_functions = [self.fenics_solution_repeater] * fenics_num
+        self.gen_functions += [dg.TwoPeakon.gen] * two_peakon_num
+        self.gen_functions += [dg.Peakon.gen] * one_peakon_num
+        
+    def __call__(self):
+        return tools.random_function(*self.gen_functions)
+
+    
+class GenGeneralSolutionOnGrid:
+    """Aaaand now that we have a wrapper around all of solution
+    generators that gives us a random solution, we still need to be able
+    to evaluate those solutions on a grid. Which is what this does.
+    """
+    def __init__(self, **kwargs):
+        self.solution_generator = GeneralSolutionGenerator(**kwargs)
+        
+    def __call__(self):
+        point, solution = self.solution_generator()
+        return dg.sol_on_grid(point, solution)
+        
+        
+class GenGeneralSolutionAtPoint:
+    """...And we need to evaluate them at a point too."""
+    
+    def __init__(self, **kwargs):
+        self.solution_generator = GeneralSolutionGenerator(**kwargs)
+        
+    def __call__(self):
+        point, solution = self.solution_generator()
+        return dg.sol_at_point(point, solution)
