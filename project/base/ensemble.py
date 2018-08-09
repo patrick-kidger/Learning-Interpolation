@@ -40,11 +40,12 @@ class RegressorAverager:
         self.mask = [True for _ in range(len(self.regressor_factories))]
         return self  # for chaining
     
-    def auto_mask(self, gen_data, thresh):
+    def auto_mask(self, gen_one_data, thresh, batch_size):
         """Automatically creates a mask to only use the regressors that
         are deemed to be 'good'.
         """
-        results = evalu.eval_regressors(self.regressor_factories, gen_data, 1000)
+        results = evalu.eval_regressors(self.regressor_factories, 
+                                        gen_one_data, batch_size)
         dnn_mask = []
         for loss in (result['loss'] for result in results):
             dnn_mask.append(loss <= thresh)
@@ -65,7 +66,7 @@ class RegressorAverager:
             yield returnval
 
     @classmethod
-    def from_dir(cls, dir_, gen_data=None, thresh=None):
+    def from_dir(cls, dir_, gen_data=None, thresh=None, batch_size=1000):
         """Creates an average regressor from all regressors in a specified
         directory.
         """

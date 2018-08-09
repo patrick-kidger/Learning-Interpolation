@@ -213,8 +213,7 @@ class ScaleCenter(ProcessorBase):
     minimum 0 and maximum 1.
     """
     
-    def _transform(self, Xi_yi):
-        Xi, yi = Xi_yi
+    def _transform_X(self, Xi):
         max_ = Xi[grid.coarse_grid_center_indices[0]]
         min_ = Xi[grid.coarse_grid_center_indices[0]]
         for i in grid.coarse_grid_center_indices[1:]:
@@ -222,11 +221,33 @@ class ScaleCenter(ProcessorBase):
             min_ = tf.minimum(Xi[i], min_)
         extent = max_ - min_
         Xi_scaled = (Xi - min_) / extent
+        return Xi_scaled, min_, extent
+    
+    def _transform_X_wrapper(self, Xi):
+        """Transforms just a feature.
+        (Called Xi because it is an individual element of a
+        batch.)
+        """
+        Xi_scaled, min_, extent = self._transform_X(Xi)
+        return Xi_scaled
+    
+    def _transform(self, Xi_yi):
+        """Transforms a particular (feature, label) pair.
+        (Called Xi, yi because they are individual elements of a
+        batch.)
+        """
+        Xi, yi = Xi_yi
+        Xi_scaled, min_, extent = self._transform_X(Xi)
         yi_scaled = (yi - min_) / extent
         return Xi_scaled, yi_scaled
     
-    def transform(self, X, y):        
-        X_scaled, y_scaled = tf.map_fn(self._transform, (X, y), back_prop=False)
+    def transform(self, X, y):
+        if y is None:
+            # y == None occurs during prediction
+            X_scaled = tf.map_fn(self._transform_X_wrapper, X, back_prop=False)
+            y_scaled = None
+        else:
+            X_scaled, y_scaled = tf.map_fn(self._transform, (X, y), back_prop=False)
         return X_scaled, y_scaled
     
     def inverse_transform(self, X, y):
@@ -243,8 +264,9 @@ class ScaleCenter(ProcessorBase):
     
     
 class AtPointMixin(ProcessorBase):
-    """Adapts the transform method to only act on the [:-2] elements 
-    of X; i.e. omitting the extra (t, x) pair that is given to it.
+    """Adapts the transform and inverse_transform methods to only 
+    act on the [:-2] elements of X; i.e. omitting the extra 
+    (t, x) pair that is given to it.
     """
     def transform(self, X, y):
         X_len = tf.shape(X)[1]
@@ -259,6 +281,11 @@ class AtPointMixin(ProcessorBase):
         num_features = (grid.num_intervals.t + 1) * (grid.num_intervals.x + 1) + 2
         X.set_shape((None, num_features))
         return X, y
+    
+    def inverse_transform(self, X, y):
+        X_ = X[:, :-2]
+        y_scaled = super(AtPointMixin, self).inverse_transform(X_, y)
+        return y_scaled
     
     
 class ScaleCenterAtPoint(AtPointMixin, ScaleCenter):

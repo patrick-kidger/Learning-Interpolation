@@ -38,6 +38,13 @@ class SolutionBase:
         the mesh grid produced by :tvals: and :xvals:
         """
         return np.array([[self((t, x)) for x in xvals] for t in tvals])
+    
+    @classmethod
+    def gen(cls):
+        """Generates a random solution of this form, and a random location
+        around which to evaluate it.
+        """
+        raise NotImplementedError
 
     
 class Peakon(SolutionBase):
@@ -58,6 +65,15 @@ class Peakon(SolutionBase):
     def __call__(self, point):
         t, x = point
         return self.c * np.exp(-1 * np.abs(x - self.c * t))
+    
+    @classmethod
+    def gen(cls):
+        c = np.random.uniform(3, 10)
+        self = cls(c=c)
+        # Random location near the peak
+        t = np.random.uniform(0, 10)
+        x = c * t + np.random.uniform(-2, 2)
+        return (t, x), self
     
 
 class TwoPeakon(SolutionBase):
@@ -124,45 +140,27 @@ class TwoPeakon(SolutionBase):
         second_peakon = p2 * np.exp(-1 * np.abs(x - x2))
         return first_peakon + second_peakon
     
+    @classmethod
+    def gen(cls):
+        p1 = np.random.uniform(3, 10)
+        p2 = np.random.uniform(3, 10)
+        x1 = np.random.uniform(0, 3)
+        x2 = np.random.uniform(3.001, 6)
+        self = cls(x1, x2, p1, p2)
+        # Random location near both of the peaks
+        t = np.random.uniform(0, 0.5)
+        left = min(x1 - 0.5 + p1 * t, x2 - 0.5 + p2 * t)
+        right = max(x1 + 0.5 + p1 * t, x2 + 0.5 + p2 * t)
+        middle = (right + left) / 2
+        semidist = (right - left) / 2
+        x = middle + semidist * np.random.uniform(-1, 1) ** 3
+        return (t, x), self
+    
 # And for more peakons the algebra gets disgusting (and more importantly, slow), so 
 # we'll leave it at two peakons for exact solutions.
 
 
 ### (Feature, label) generation
-
-# These next few functions may be combined to generate (feature, label)
-# pairs, e.g.
-# >>> point, solution = gen_one_peakon()
-# >>> X, y = sol_on_grid(point, solution)
-
-def gen_one_peakon():
-    """Returns a random peakon and a random location."""
-    # Random solution to the CH equation
-    c = np.random.uniform(3, 10)
-    peakon = Peakon(c=c)
-    # Random location near the peak
-    t = np.random.uniform(0, 10)
-    x = c * t + np.random.uniform(-2, 2)
-    return (t, x), peakon
-
-
-def gen_two_peakon():
-    """Returns a random two peakon solution, and a random location."""
-    # Random solution to the CH equation
-    p1 = np.random.uniform(3, 10)
-    p2 = np.random.uniform(3, 10)
-    x1 = np.random.uniform(0, 3)
-    x2 = np.random.uniform(3.001, 6)
-    twopeakon = TwoPeakon(x1, x2, p1, p2)
-    # Random location near both of the peaks
-    t = np.random.uniform(0, 0.5)
-    left = min(x1 - 0.5 + p1 * t, x2 - 0.5 + p2 * t)
-    right = max(x1 + 0.5 + p1 * t, x2 + 0.5 + p2 * t)
-    middle = (right + left) / 2
-    semidist = (right - left) / 2
-    x = middle + semidist * np.random.uniform(-1, 1) ** 3
-    return (t, x), twopeakon
-
 
 def sol_on_grid(point, solution):
     """Returns the values of the :solution: on fine and coarse grids around the
@@ -218,7 +216,7 @@ def gen_one_peakon_on_grid():
     a single-peakon solution on a coarse grid, and the labels are the values of
     the single-peakon solution on a fine grid.
     """
-    point, peakon = gen_one_peakon()
+    point, peakon = Peakon.gen()
     return sol_on_grid(point, peakon)
 
 
@@ -227,7 +225,7 @@ def gen_two_peakon_on_grid():
     a two-peakon solution on a coarse grid, and the labels are the values of
     the two-peakon solution on a fine grid.
     """
-    point, twopeakon = gen_two_peakon()
+    point, twopeakon = TwoPeakon.gen()
     return sol_on_grid(point, twopeakon)
 
 
@@ -245,7 +243,7 @@ def gen_one_peakon_at_point():
     point, and the label is the value of the single-peakon solution at that
     point.
     """
-    point, peakon = gen_one_peakon()
+    point, peakon = Peakon.gen()
     return sol_at_point(point, peakon)
 
 
@@ -255,7 +253,7 @@ def gen_two_peakon_at_point():
     point, and the label is the value of the two-peakon solution at that
     point.
     """
-    point, twopeakon = gen_two_peakon()
+    point, twopeakon = TwoPeakon.gen()
     return sol_at_point(point, twopeakon)
 
 
@@ -412,7 +410,10 @@ class BatchData:
     @staticmethod
     def batch(gen_one_data, batch_size=1):
         """Takes a function :gen_one_data: which returns a generator and a
-        :batch_size:, and returns a batch of that size.
+        :batch_size:, and returns a batch of that size. Its return value is
+        not wrapped in a tf.data.Dataset; furthermore the batch generation
+        does not using threading, so this is not the method to use for
+        anything time-sensitive; try from_func instead.
         """
         X_batch = []
         y_batch = []
@@ -420,4 +421,4 @@ class BatchData:
             X, y = gen_one_data()
             X_batch.append(X)
             y_batch.append(y)
-        return (np.array(X_batch), np.array(y_batch))
+        return np.array(X_batch), np.array(y_batch)

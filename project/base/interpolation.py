@@ -70,7 +70,7 @@ class InterpolatorBase:
         X, y = input_fn()
         
         for Xi in X:
-            returnval.append(self.predict_single(Xi, y))
+            returnval.append(self.predict_single(Xi))
             
         returnval = np.array(returnval)
         while True:
@@ -83,7 +83,7 @@ class FineGridInterpolator(InterpolatorBase):
     Requires the _prepare and _interp methods provided by one of the mixins
     above."""
     
-    def predict_single(self, Xi, y):
+    def predict_single(self, Xi):
         returnval = []
         # Translation doesn't matter at this point so WLOG the fine grid is
         # around 0, 0. (cls._interp makes the same assumption; these assumptions
@@ -226,6 +226,14 @@ class FineGridBilinearInterp(BilinearInterpMixin, FineGridInterpolator):
 
 
 class FineGridPolyInterp(PolyInterpMixin, FineGridInterpolator):
+    pass
+
+
+class PointBilinearInterp(BilinearInterpMixin, PointInterpolator):
+    pass
+
+
+class PointPolyInterp(PolyInterpMixin, PointInterpolator):
     pass
     
     
