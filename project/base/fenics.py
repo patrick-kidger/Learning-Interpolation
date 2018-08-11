@@ -416,12 +416,14 @@ class FenicsSolution(dg.SolutionBase):
     @classmethod
     def _gen_point(cls, **kwargs):
         """Handles the generation of a particular point."""
-        a = kwargs.get('a', cls.defaults.a)
-        b = kwargs.get('b', cls.defaults.b)
-        t = kwargs.get('t', cls.defaults.t)
-        T = kwargs.get('T', cls.defaults.T)
-        fineness_t = kwargs.get('fineness_t', cls.defaults.fineness_t)
-        fineness_x = kwargs.get('fineness_x', cls.defaults.fineness_x)
+        a = kwargs.pop('a', cls.defaults.a)
+        b = kwargs.pop('b', cls.defaults.b)
+        t = kwargs.pop('t', cls.defaults.t)
+        T = kwargs.pop('T', cls.defaults.T)
+        fineness_t = kwargs.pop('fineness_t', cls.defaults.fineness_t)
+        fineness_x = kwargs.pop('fineness_x', cls.defaults.fineness_x)
+        if kwargs != {}:
+            raise TypeError("_gen_point() got unexpected keyword arguments {}".format(kwargs))
         # The coarse grid musn't have any part of it lie outside [t, T]x[a, b],
         # as we don't have any data there.
         # (Taking off all of grid.num_intervals, rather than just half of it, 
@@ -490,10 +492,9 @@ class FenicsSolutionRepeater:
         self.kwargs = kwargs
         
         self.solution = None
-        self._gen_solution()
         
     def __call__(self):
-        if self.current_count >= self.repeat:
+        if self.current_count >= self.repeat or self.current_count == 0:
             self._gen_solution()
             self.current_count = 1
         else:
