@@ -5,6 +5,7 @@ tf.data.Dataset format expected by TensorFlow.
 import functools as ft
 import multiprocessing as mp
 import numpy as np
+import os
 
 import tensorflow as tf
 tfd = tf.data
@@ -13,6 +14,7 @@ tflog = tf.logging
 # https://github.com/patrick-kidger/tools
 import tools
 
+from . import exceptions as ex
 from . import grid
 
 
@@ -308,16 +310,32 @@ y_peak = np.array([5.34308947, 5.28992485, 5.23728921, 5.18517732, 5.13358394,
                    5.69745227])
 
 
-### Batching Data
-
+### Multithreaded generated and batching of data
 
 class BatchData:
-    """Multithreading wrapper around tf.data.Dataset."""
-    
-    num_processes = 8
+    """Multithreading wrapper around tf.data.Dataset. Note that its
+    terminate() method should be called when the instance is finished
+    with.
+    """
     
     def __init__(self, gen_one_data, batch_size=1, queue_size=50, 
-                 X_dtype=None, y_dtype=None, X_shape=None, y_shape=None):
+                 X_dtype=None, y_dtype=None, X_shape=None, y_shape=None,
+                 num_processes=None):
+        """Initialising this class will create a queue of length :queue_size:
+        and start populating it with the return values from :gen_one_data:.
+        The argument :num_processes: determines how many processes will be
+        used to call :gen_one_data:. (Note then that calls of :gen_one_data:
+        might return their results out of order with the order that they were
+        called in.) It defaults to the result of os.cpu_count().
+        
+        
+        The argument :batch_size: is used to determine the size of the
+        batches that it later produces. The arguments :X_dtype:, :y_dtype:,
+        :X_shape: and :y_shape: should be the dtypes and shapes of the
+        features (X) and labels (y) produced by gen_one_data. If any of them
+        are set to None (their default), then :gen_one_data: will be called
+        once to determine them automatically.
+        """
         
         self.batch_size = batch_size
         self.queue = mp.Queue(maxsize=queue_size)
@@ -336,38 +354,46 @@ class BatchData:
             
         def _gen_one_data():
             while True:
-                while True:
-                    X, y = gen_one_data()
-                    # Quick check to make sure that the data is nonconstant, otherwise
-                    # most preprocessing (scaling) won't work.
-                    # And really, do you need a neural network to tell you the
-                    # interpolated values if your input data is constant?
-                    if np.max(X) - np.min(X) > 0.01 and np.max(y) - np.min(y) > 0.01:
-                        break
-                    else:
-                        tflog.info("BatchData: Got bad data; retrying.")
-                self.queue.put((X, y))
+                self.queue.put(gen_one_data())
                 
+        if num_processes is None:
+            num_processes = os.cpu_count()
         self.processes = [mp.Process(target=_gen_one_data)
-                          for _ in range(self.num_processes)]
+                          for _ in range(num_processes)]
         for process in self.processes:
             process.start()
+            
+        self.terminated = False
         
     def __call__(self):
-        def generator():
-            while True:
-                yield self.queue.get()
-        ds = tfd.Dataset.from_generator(generator, (self.X_dtype, self.y_dtype),
-                                        (self.X_shape, self.y_shape))
-        ds_ = ds.batch(self.batch_size)
-        return ds_
+        """Creates a tf.data.Dataset gives batches of the appropriate size.
+        """
+        
+        if not self.terminated:
+            def generator():
+                while True:
+                    yield self.queue.get()
+            # As we want a Dataset that keeps producing (feature, label) pairs
+            # forever, we have to use the from_generator constructor. (I don't
+            # think any of the others allow for online data production like this.)
+            ds = tfd.Dataset.from_generator(generator, (self.X_dtype, self.y_dtype),
+                                            (self.X_shape, self.y_shape))
+            return ds.batch(self.batch_size)
+        else:
+            raise ex.TerminatedBatchData
     
     def terminate(self):
+        """Terminates the processes that this instance uses."""
         for process in self.processes:
             process.terminate()
+        self.terminated = True
             
     @classmethod
     def context(cls, *args, **kwargs):
+        """For use in with statements. Creates a BatchData and automatically
+        terminates it afterwards.
+        """
+        
         class _BatchDataContext:
             def __enter__(self_context):
                 self = cls(*args, **kwargs)
@@ -376,84 +402,27 @@ class BatchData:
             
             def __exit__(self_context, exc_type, exc_val, exc_tb):
                 self_context.instance.terminate()
+                
         return _BatchDataContext()
-                
-                
-
-#     @staticmethod
-#     def to_dataset(data):
-#         """Returns a tf.data.Dataset which endlessly repeats :data:."""
-#         # Lambda wrapper is because in order to be part of the same graph as
-#         # the DNN, it has to be called later on.
-#         return lambda: tfd.Dataset.from_tensors(data).repeat()
     
-#     @classmethod
-#     def batch(cls, gen_one_data, batch_size=1):
-#         """Takes a function :gen_one_data: which returns a generator and a
-#         :batch_size:, and returns a batch of that size. Its return value is
-#         not wrapped in a tf.data.Dataset.
-#         """
-#         (pool, gen_data_pool, batch_list, 
-#          Xdtype, ydtype, 
-#          X_batch_shape, y_batch_shape) = cls._batch_setup(gen_one_data, 
-#                                                           batch_size)
-#         return cls._batch(pool, gen_data_pool, batch_list, Xdtype, ydtype,
-#                           X_batch_shape, y_batch_shape)
+    def batch(cls, gen_one_data, batch_size=1):
+        """Takes a function :gen_one_data: which returns a generator and a
+        :batch_size:, which defaults to 1, and returns a batch of that size. 
+        Its return value is not wrapped in a tf.data.Dataset.
+        """
         
-#     @classmethod
-#     def _batch_setup(cls, gen_one_data, batch_size):
-#         """Here we handle setting things up for generating batches. We do
-#         this once here so that it doesn't all need to be done every time.
-#         (Although finding the type and shape of X and y is the only truly
-#         slow part.)
-#         """
+        with cls.context(gen_one_data=gen_one_data, batch_size=batch_size) as self:
+            X_batch = []
+            y_batch = []
+            for _ in range(batch_size):
+                X, y = self.queue.get()
+                X_batch.append(X)
+                y_batch.append(y)
+            return np.array(X_batch), np.array(y_batch)
         
-#         # Generating data is _slow_, because in general we have to use Python
-#         # to do so. So we have to use tf.py_func to feed that into TensorFlow
-#         # (this is what is called by tf.data.Dataset.from_generator). But
-#         # tf.py_func only runs its function inside the one and only Python
-#         # interpreter that is has access to, namely the one that it is called
-#         # from itself.
-#         # So in order to achieve speedup via multiprocessing, we have to do
-#         # multiprocessing the Python way rather than the TensorFlow way.
-#         pool = cls._get_pool()
-#         # Now we have this strange looking partial of a global function. When
-#         # we come to generate our data later, this is the function that we'll
-#         # be calling. _gen_one_data is a global function because the default
-#         # Python multiprocessing package is only capable of pickling top-level
-#         # functions. It then has to be a partial of this function so that we
-#         # can pass it gen_one_data, i.e. the function that we're actually
-#         # calling. The redundant _ argument in _gen_one_data is the the value
-#         # from the iterable batch_list, which is necessary to tell the
-#         # multiprocessing map how many times we want to call the function.
-#         gen_data_pool = ft.partial(_gen_one_data, gen_one_data=gen_one_data)
-#         batch_list = list(range(batch_size))
-        
-#         # Call the function once so we know what its size and type is.
-#         X, y = gen_one_data()
-#         Xdtype = X.dtype
-#         ydtype = y.dtype
-#         X_batch_shape = (batch_size, *X.shape)
-#         y_batch_shape = (batch_size, *y.shape)
-        
-#         return (pool, gen_data_pool, batch_list, Xdtype, ydtype, 
-#                 X_batch_shape, y_batch_shape)
-        
-#     @staticmethod
-#     def _batch(pool, gen_data_pool, batch_list, Xdtype, ydtype, 
-#                X_batch_shape, y_batch_shape):
-#         """Actually generates a batch of data using the objects supplied
-#         to it from _batch_setup.
-#         """
-        
-#         # We vectorize our data generation. Note that we have to do this
-#         # this here (and not via the Dataset.batch method), because we're
-#         # doing Python multiprocessing, not TensorFlow multiprocessing:
-#         # and we're using multiprocessing to generate multiple elements
-#         # of a batch simulataneously.
-#         results = pool.map(gen_data_pool, batch_list)
-#         X_batch = np.empty(X_batch_shape, dtype=Xdtype)
-#         y_batch = np.empty(y_batch_shape, dtype=ydtype)
-#         X_batch[:], y_batch[:] = zip(*results)
-        
-#         return X_batch, y_batch
+    @staticmethod
+    def to_dataset(data):
+        """Returns a tf.data.Dataset which endlessly repeats :data:."""
+        # Lambda wrapper is because in order to be part of the same graph as
+        # the DNN, so it has to be called later on.
+        return lambda: tfd.Dataset.from_tensors(data).repeat()

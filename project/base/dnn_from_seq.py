@@ -130,7 +130,7 @@ class Sequential:
             if mode == tfe.ModeKeys.EVAL:
                 return tfe.EstimatorSpec(mode=mode, loss=loss)
             
-            raise RuntimeError("mode '{}' not understood".format(mode))
+            raise ValueError("mode '{}' not understood".format(mode))
                 
         return tfe.Estimator(model_fn=model_fn, model_dir=model_dir, **kwargs)
     

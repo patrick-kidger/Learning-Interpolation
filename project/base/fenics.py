@@ -1,5 +1,6 @@
 """Provides for the generation of numerical solutions via 
-FEniCS.
+FEniCS. Also provides wrapper classes to randomly produce 
+FEniCS or peakon solutions.
 """
 
 import itertools as it
@@ -16,6 +17,8 @@ import tools
 from . import data_gen as dg
 from . import exceptions as ex
 from . import grid
+
+fc.set_log_level(30)  # i.e. warning
 
 
 def _create_function_spaces(t, T, a, b, fineness_t, fineness_x):
@@ -259,9 +262,9 @@ class FenicsSolution(dg.SolutionBase):
             line_up_message = ('FEniCS: Making solution periodic by adding {} to the '
                                'initial condition.'.format(linear_str))
             if abs(_c) > 0.25:
-                tflog.warn(line_up_message)
-            else:
                 tflog.info(line_up_message)
+            else:
+                tflog.debug(line_up_message)
             initial_condition += ' + ' + linear_str
 
         tvals, xvals, uvals, converged = fenics_solve(initial_condition, t, T, a, b, 
@@ -269,7 +272,7 @@ class FenicsSolution(dg.SolutionBase):
                                                       smoothing_thresh=smoothing_thresh)
 
         if not converged:
-            raise ex.FEniCSConvergenceException('FEniCS: Failed to converge.')
+            raise ex.FEniCSConvergenceException
             
         self.initial_condition = initial_condition
         self.t = t
@@ -401,7 +404,7 @@ class FenicsSolution(dg.SolutionBase):
                                                                   peak_loc))
 
         initial_condition = ' + '.join(peak_strs)
-        tflog.info("FEniCS: Generated initial condition {}".format(initial_condition))
+        tflog.debug("FEniCS: Generated initial condition {}".format(initial_condition))
         converged = False
         while not converged:
             try:
@@ -416,6 +419,7 @@ class FenicsSolution(dg.SolutionBase):
     @classmethod
     def _gen_point(cls, **kwargs):
         """Handles the generation of a particular point."""
+        
         a = kwargs.pop('a', cls.defaults.a)
         b = kwargs.pop('b', cls.defaults.b)
         t = kwargs.pop('t', cls.defaults.t)
@@ -464,7 +468,7 @@ class FenicsSolutionRepeater:
     defaults = FenicsSolution.defaults
     
     def __init__(self, 
-                 repeat=100, 
+                 repeat=1000, 
                  min_num_peaks=defaults.min_num_peaks, 
                  max_num_peaks=defaults.max_num_peaks, 
                  min_wobbly=defaults.min_wobbly, 
@@ -517,16 +521,18 @@ class FenicsSolutionRepeater:
                                                      **self.kwargs)
 
         
-class GeneralSolutionGenerator:
-    """Now that we have FEniCS-based solutions alongside the simple
-    peakon solutions, we need a wrapper around all of them that will
-    randomly give us a (point, solution) pair from any of them.
-    
-    This is that wrapper.
+class GenGeneralSolution:
+    """Wraps the three different way of creating solutions that we have: 
+    namely one peakon, two peakon, and FEniCS.
     """
+    
     def __init__(self, fenics_num=5, two_peakon_num=4, one_peakon_num=1, 
                  **kwargs):
-        # Screw dependency inversion, creating a 
+        """May be passed :fenics_num:, :two_peakon_num: and :one_peakon_num:
+        arguments, which specify the proportion (relative to each other) 
+        that each type of solution should be created.
+        """
+        # Not using dependency inversion, creating a 
         # 'GeneralSolutionGeneratorFactory' is OTT ravioli code for
         # this problem. (Things are already looking a bit ravioli-ish
         # as it is!)
@@ -543,24 +549,46 @@ class GeneralSolutionGenerator:
 
     
 class GenGeneralSolutionOnGrid:
-    """Aaaand now that we have a wrapper around all of solution
-    generators that gives us a random solution, we still need to be able
-    to evaluate those solutions on a grid. Which is what this does.
+    """Calls to instances return a (feature, label) pair, where the features 
+    are the values of either a single-peakon, a two-peakon, or a FEniCS 
+    solution on a coarse grid, and the labels are the values of the solution
+    on a fine grid.
     """
+    
     def __init__(self, **kwargs):
-        self.solution_generator = GeneralSolutionGenerator(**kwargs)
+        self.gen_solution = GenGeneralSolution(**kwargs)
         
     def __call__(self):
-        point, solution = self.solution_generator()
-        return dg.sol_on_grid(point, solution)
+        while True:
+            point, solution = self.gen_solution()
+            X, y = dg.sol_on_grid(point, solution)
+            # Quick check to make sure that the data is nonconstant, otherwise
+            # most preprocessing (scaling) won't work.
+            # And really, do you need a neural network to tell you the
+            # interpolated values if your input data is constant?
+            X_corners = [X[i] for i in grid.coarse_grid_center_indices]
+            # Ideally we'd have customised checking for each type of
+            # preprocessing but this will do for now
+            if np.max(X_corners) - np.min(X_corners) > 0.01:
+                break
+        return X, y
         
         
 class GenGeneralSolutionAtPoint:
-    """...And we need to evaluate them at a point too."""
+    """Calls to instances return a (feature, label) pair, where the features 
+    are the values of either a single-peakon, a two-peakon, or a FEniCS 
+    solution on a coarse grid, and the location of a particular point,
+    and the labels are the values of the solution on a fine grid.
+    """
     
     def __init__(self, **kwargs):
-        self.solution_generator = GeneralSolutionGenerator(**kwargs)
+        self.gen_solution = GenGeneralSolution(**kwargs)
         
     def __call__(self):
-        point, solution = self.solution_generator()
-        return dg.sol_at_point(point, solution)
+        while True:
+            point, solution = self.gen_solution()
+            X, y = dg.sol_at_point(point, solution)
+            X_corners = [X[i] for i in grid.coarse_grid_center_indices]
+            if np.max(X_corners) - np.min(X_corners) > 0.01:
+                break
+        return X, y

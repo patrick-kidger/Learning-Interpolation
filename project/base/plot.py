@@ -60,7 +60,7 @@ def grid_plot(ax, data, cg_or_fg=None, label=''):
     elif cg_or_fg == 'fg':
         grid_ = grid.fine_grid((0, 0))
     else:
-        raise RuntimeError("Argument cg_or_fg must be 'cg' or 'fg'.")
+        raise ValueError("Argument cg_or_fg must be 'cg' or 'fg'.")
     ax.scatter(*zip(*grid_), data, label=label)
     
     

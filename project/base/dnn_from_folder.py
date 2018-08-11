@@ -49,7 +49,7 @@ def _dnn_hyperparameters_from_dir(dir_name):
         try:
             activation_fn = getattr(tf.nn, activation_name)
         except AttributeError:
-            raise RuntimeError("Activation '{}' not understood.".format(activation_name))
+            raise ValueError("Activation '{}' not understood.".format(activation_name))
         else:
             dnn_details['activation'] = activation_fn
         
@@ -59,7 +59,7 @@ def _dnn_hyperparameters_from_dir(dir_name):
     elif len(remaining) == 1:
         uuid = remaining[0]
     else:
-        raise RuntimeError("Bad dir_name string '{}'. Too many remaining "
+        raise ValueError("Bad dir_name string '{}'. Too many remaining "
                            "arguments: {}".format(dir_name, remaining))
         
     return dnn_details, uuid
@@ -117,7 +117,7 @@ def dnn_factories_from_dir(dir_, exclude_start=('.',), exclude_end=(),
         model_dir = dir_ + '/' + subdir
         try:
             dnn_factory = dnn_factory_from_model_dir(model_dir, **kwargs)
-        except (FileNotFoundError, RuntimeError) as e:
+        except (FileNotFoundError, ValueError) as e:
             tflog.info("Could not load DNN from '{}'. Error message: '{}'"
                        .format(subdir, e))
         else:
