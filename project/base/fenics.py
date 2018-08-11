@@ -14,6 +14,7 @@ tflog = tf.logging
 import tools
 
 from . import data_gen as dg
+from . import exceptions as ex
 from . import grid
 
 
@@ -254,9 +255,13 @@ class FenicsSolution(dg.SolutionBase):
             _m = _diff / (b - a)
             _c = -0.5 * _diff - _m * a
 
-            linear_str = '{} * x[0] + {}'.format(_m, _c) 
-            tflog.info('FEniCS: Making solution periodic by adding {} to the '
-                       'initial condition.'.format(linear_str))
+            linear_str = '{} * x[0] + {}'.format(_m, _c)
+            line_up_message = ('FEniCS: Making solution periodic by adding {} to the '
+                               'initial condition.'.format(linear_str))
+            if abs(_c) > 0.25:
+                tflog.warn(line_up_message)
+            else:
+                tflog.info(line_up_message)
             initial_condition += ' + ' + linear_str
 
         tvals, xvals, uvals, converged = fenics_solve(initial_condition, t, T, a, b, 
@@ -264,7 +269,7 @@ class FenicsSolution(dg.SolutionBase):
                                                       smoothing_thresh=smoothing_thresh)
 
         if not converged:
-            raise RuntimeError('FEniCS: Failed to converge.')
+            raise ex.FEniCSConvergenceException('FEniCS: Failed to converge.')
             
         self.initial_condition = initial_condition
         self.t = t
@@ -387,10 +392,11 @@ class FenicsSolution(dg.SolutionBase):
                 wobble_str = ' + '.join(wobble_strs)
                 norm_wobble_str = '{} + {}'.format(wobbly, wobble_str)
             else:
+                wobbly = 1
                 norm_wobble_str = '1.0'
 
             # *0.5 because norm_wobble_str takes  values in [0, 2]
-            peak_strs.append('{} * ({}) / cosh(x[0] - {})'.format(0.5 * peak_height, 
+            peak_strs.append('{} * ({}) / cosh(x[0] - {})'.format(0.5 * peak_height / wobbly, 
                                                                   norm_wobble_str, 
                                                                   peak_loc))
 
@@ -400,7 +406,7 @@ class FenicsSolution(dg.SolutionBase):
         while not converged:
             try:
                 self = cls(initial_condition, **kwargs)
-            except RuntimeError as e:
+            except ex.FEniCSConvergenceException as e:
                 tflog.warn(e)
             else:
                 converged = True
@@ -416,8 +422,14 @@ class FenicsSolution(dg.SolutionBase):
         T = kwargs.get('T', cls.defaults.T)
         fineness_t = kwargs.get('fineness_t', cls.defaults.fineness_t)
         fineness_x = kwargs.get('fineness_x', cls.defaults.fineness_x)
-        t_point = np.random.uniform(t, T - grid.coarse_grid_sep.t)
-        x_point = np.random.uniform(a, b - grid.coarse_grid_sep.x)
+        # The coarse grid musn't have any part of it lie outside [t, T]x[a, b],
+        # as we don't have any data there.
+        # (Taking off all of grid.num_intervals, rather than just half of it, 
+        # is a little overkill.)
+        t_point = np.random.uniform(t + grid.num_intervals.t * grid.coarse_grid_sep.t, 
+                                    T - grid.num_intervals.t * grid.coarse_grid_sep.t)
+        x_point = np.random.uniform(a + grid.num_intervals.x * grid.coarse_grid_sep.x, 
+                                    b - grid.num_intervals.x * grid.coarse_grid_sep.x)
         t_point = tools.round_mult(t_point, fineness_t, 'down')
         x_point = tools.round_mult(x_point, fineness_x, 'down')
         return t_point, x_point
@@ -428,8 +440,9 @@ class FenicsSolution(dg.SolutionBase):
 # over before throwing it away... which is of course very similar in
 # nature to the infamous Singleton. Which isn't a problem which has
 # one clear good way to handle it, to my knowledge.
-# So this probably isn't the 'best' solution, but things are simple
-# enough that it is at least the easiest to implement.
+# So this probably isn't the 'best' solution from a theoretical
+# standpoint, but things are simple enough that it is at least the 
+# easiest to implement.
 class FenicsSolutionRepeater:
     """Provides for a more efficient way to use FEniCS-based solutions.
     
@@ -438,18 +451,18 @@ class FenicsSolutionRepeater:
     sample different spacetime regions of the solution to generate
     different training samples.
     
-    This class accepts a :max_repeat: argument on initialisation,
-    specifying how many times a solution should be reused before another
-    one is generated. Other than that argument, initialise this class 
-    with the arguments that FenicsSolution.gen accepts; subsequent calls
-    of this instance will return a point and solution just like
+    This class accepts a :repeat: argument on initialisation, specifying
+    how many times a solution should be reused before another one is
+    generated. Other than that argument, initialise this class with the
+    arguments that FenicsSolution.gen accepts; subsequently calling this
+    instance will return a point and solution just like 
     FenicsSolution.gen would.
     """
     
     defaults = FenicsSolution.defaults
     
     def __init__(self, 
-                 max_repeat=200, 
+                 repeat=100, 
                  min_num_peaks=defaults.min_num_peaks, 
                  max_num_peaks=defaults.max_num_peaks, 
                  min_wobbly=defaults.min_wobbly, 
@@ -461,7 +474,7 @@ class FenicsSolutionRepeater:
                  min_height=defaults.min_height, 
                  max_height=defaults.max_height, 
                  **kwargs):
-        self.max_repeat = max_repeat
+        self.repeat = repeat
         self.current_count = 0
         
         self.min_num_peaks = min_num_peaks
@@ -480,7 +493,7 @@ class FenicsSolutionRepeater:
         self._gen_solution()
         
     def __call__(self):
-        if self.current_count >= self.max_repeat:
+        if self.current_count >= self.repeat:
             self._gen_solution()
             self.current_count = 1
         else:
@@ -516,8 +529,11 @@ class GeneralSolutionGenerator:
         # 'GeneralSolutionGeneratorFactory' is OTT ravioli code for
         # this problem. (Things are already looking a bit ravioli-ish
         # as it is!)
-        self.fenics_solution_repeater = FenicsSolutionRepeater(**kwargs)
-        self.gen_functions = [self.fenics_solution_repeater] * fenics_num
+        if fenics_num > 0:
+            self.fenics_solution_repeater = FenicsSolutionRepeater(**kwargs)
+            self.gen_functions = [self.fenics_solution_repeater] * fenics_num
+        else:
+            self.gen_functions = []
         self.gen_functions += [dg.TwoPeakon.gen] * two_peakon_num
         self.gen_functions += [dg.Peakon.gen] * one_peakon_num
         

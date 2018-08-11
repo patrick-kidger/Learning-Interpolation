@@ -8,6 +8,7 @@ import numpy as np
 
 import tensorflow as tf
 tfd = tf.data
+tflog = tf.logging
 
 # https://github.com/patrick-kidger/tools
 import tools
@@ -313,7 +314,19 @@ def _gen_one_data(_, gen_one_data):
     # Here begins hackery.
     # See the comments in BatchData.from_func, BatchData._batch_setup and 
     # BatchData._batch.
-    return gen_one_data()
+    while True:
+        X, y = gen_one_data()
+        # Quick check to make sure that the data is nonconstant, otherwise
+        # most preprocessing (scaling) won't work.
+        # And really, do you need a neural network to tell you the
+        # interpolated values if your input data is constant?
+        max_ = np.max(X)
+        min_ = np.min(X)
+        if max_ - min_ > 0.001:
+            break
+        else:
+            tflog.warn("BatchData: Given data with max {} and min {}; trying again.".format(max_, min_))
+    return X, y
 
 
 class BatchData:
@@ -327,7 +340,7 @@ class BatchData:
         kernel.
         """
         if cls._pool is None:
-            cls._pool = mp.Pool(processes=None)
+            cls._pool = mp.Pool(processes=8)
         return cls._pool
     
     @classmethod

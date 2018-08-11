@@ -1,5 +1,8 @@
 """Provides a regressor averager to handle an ensemble of regressors."""
 
+import tensorflow as tf
+tflog = tf.logging
+
 # https://github.com/patrick-kidger/tools
 import tools
 
@@ -32,6 +35,8 @@ class RegressorAverager:
     def set_mask(self, mask):
         """Sets a mask to only use some of the regressors."""
         assert len(mask) == len(self.regressor_factories)
+        if not mask:
+            tflog.warn('Setting empty mask for {}.'.format(self.__class__.__name__))
         self.mask = tuple(mask)
         return self  # for chaining
         
@@ -47,7 +52,7 @@ class RegressorAverager:
         results = evalu.eval_regressors(self.regressor_factories, 
                                         gen_one_data, batch_size)
         dnn_mask = []
-        for loss in (result['loss'] for result in results):
+        for loss in (result.average_loss for result in results):
             dnn_mask.append(loss <= thresh)
         self.set_mask(dnn_mask)
         
