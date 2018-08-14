@@ -156,6 +156,7 @@ class TwoPeakon(SolutionBase):
         right = max(x1 + 0.5 + p1 * t, x2 + 0.5 + p2 * t)
         middle = (right + left) / 2
         semidist = (right - left) / 2
+        # Biased towards the middle of the region
         x = middle + semidist * np.random.uniform(-1, 1) ** 3
         return (t, x), self
     
@@ -405,6 +406,7 @@ class BatchData:
                 
         return _BatchDataContext()
     
+    @classmethod
     def batch(cls, gen_one_data, batch_size=1):
         """Takes a function :gen_one_data: which returns a generator and a
         :batch_size:, which defaults to 1, and returns a batch of that size. 

@@ -1,5 +1,7 @@
 """Provides a regressor averager to handle an ensemble of regressors."""
 
+import numpy as np
+
 import tensorflow as tf
 tflog = tf.logging
 
@@ -45,15 +47,40 @@ class RegressorAverager:
         self.mask = [True for _ in range(len(self.regressor_factories))]
         return self  # for chaining
     
-    def auto_mask(self, gen_one_data, thresh, batch_size):
+    def auto_mask(self, gen_one_data, batch_size, thresh=None, top=None):
         """Automatically creates a mask to only use the regressors that
         are deemed to be 'good'.
+        
+        The function :gen_one_data: will be called :batch_size: times to 
+        generate the  (feature, label) pairs on which the regressors are 
+        tested.
+        
+        At least one of :thresh: or :top: should be passed. The best :top:
+        number of regressors whose loss is smaller than :thresh: will be
+        deemed to be 'good'. If :thresh: is None (which it defaults to),
+        then simply the best :top: regressors will be used. If :top: is
+        None (which it defaults to) then simply every regressor whose loss
+        is at least :thresh: will be used.
         """
+        if thresh is None and top is None:
+            raise RuntimeError('At least one of thresh or top must be not '
+                               'None.')
+            
+        if thresh is None:
+            thresh = np.inf
+        if top is None:
+            top = len(self.regressor_factories)
+        top = top - 1
+        
         results = evalu.eval_regressors(self.regressor_factories, 
                                         gen_one_data, batch_size)
+        loss_values = [result.loss for result in results]            
+        thresh_loss = min(sorted(loss_values)[top], thresh)
+        
         dnn_mask = []
-        for loss in (result.average_loss for result in results):
-            dnn_mask.append(loss <= thresh)
+        for loss in loss_values:
+            dnn_mask.append(loss <= thresh_loss)
+            
         self.set_mask(dnn_mask)
         
     def predict(self, input_fn, *args, **kwargs):

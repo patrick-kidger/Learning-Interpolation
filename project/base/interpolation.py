@@ -60,7 +60,7 @@ class InterpolatorBase:
     
     def predict(self, input_fn, yield_single_examples=False):
         """The argument :input_fn: should probably be a lambda wrapper around
-        the result of BatchData.test.
+        the result of BatchData.batch.
         
         The argument :yield_single_examples: is there for compatibility with the
         interface for the usual TF Estimators and is ignored.
@@ -69,8 +69,8 @@ class InterpolatorBase:
         returnval = []
         X, y = input_fn()
         
-        for Xi in X:
-            returnval.append(self.predict_single(Xi))
+        for Xi, yi in zip(X, y):
+            returnval.append(self.predict_single(Xi, yi))
             
         returnval = np.array(returnval)
         while True:
@@ -83,7 +83,7 @@ class FineGridInterpolator(InterpolatorBase):
     Requires the _prepare and _interp methods provided by one of the mixins
     above."""
     
-    def predict_single(self, Xi):
+    def predict_single(self, Xi, yi):
         returnval = []
         # Translation doesn't matter at this point so WLOG the fine grid is
         # around 0, 0. (cls._interp makes the same assumption; these assumptions
@@ -100,7 +100,7 @@ class PointInterpolator(InterpolatorBase):
     Requires the _prepare and _interp methods provided by one of the mixins
     above."""
     
-    def predict_single(self, Xi):
+    def predict_single(self, Xi, yi):
         # Separate the location data and the grid data
         t_offset = Xi[-2]
         x_offset = Xi[-1]
@@ -240,5 +240,5 @@ class PointPolyInterp(PolyInterpMixin, PointInterpolator):
 class Perfect(InterpolatorBase):
     """Regressor that cheats to always give the perfect prediction."""
     
-    def predict_single(self, Xi, y):
-        return y
+    def predict_single(self, Xi, yi):
+        return yi

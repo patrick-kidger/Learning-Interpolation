@@ -56,23 +56,30 @@ class Sequential:
         self._layer_train[-1] = True
         
     def compile(self, optimizer=None, loss_fn=tflo.mean_squared_error, 
-                model_dir=None, gradient_clip=None, processor=None, **kwargs):
+                model_dir=None, gradient_clip=None, processor=None, 
+                learning_rate=None, **kwargs):
         """Takes its abstract neural network definition and compiles it into a
         tf.estimator.Estimator.
         
         May be given an :optimizer:, defaulting to tf.train.AdamOptimizer().
         May be given a :loss_fn:, defaulting to tf.losses.mean_squared_error.
+        May be given a :model_dir:, to load any existing data for the model,
+        and to save training results in.
         May be given a :gradient_clip:, defaulting to no clipping.
-        May be given a :processor:, which will be saved and loaded.
+        May be given a :processor: to apply preprocessing to the input data.
+        May be given a :learning_rate:, which will set the learning rate of
+        the default optimizer. Will be ignored if an actual optimizer is
+        passed as well.
         
         Any additional kwargs are passed into the creation of the
         tf.estimator.Estimator.
         """
         
-        # Probably shouldn't use the same optimizer instance every time? Hence
-        # this.
         if optimizer is None:
-            optimizer = tft.AdamOptimizer()
+            if learning_rate is None:
+                optimizer = tft.AdamOptimizer()
+            else:
+                optimizer = tft.AdamOptimizer(learning_rate=learning_rate)
             
         if processor is None:
             processor = pc.IdentityProcessor()

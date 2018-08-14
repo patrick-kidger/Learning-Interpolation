@@ -29,12 +29,15 @@ def _eval_regressor(regressor_factory, X, y):
         
     diff = prediction - y
     squared_error = np.square(diff)
+    total_loss = np.sum(squared_error)
     result = tools.Object(prediction=prediction,
                           X=X,
                           y=y,
                           diff=diff,
+                          max_deviation=np.max(np.abs(diff)),
                           average_loss=np.mean(squared_error),
-                          loss=np.sum(squared_error))
+                          loss=total_loss / len(X),
+                          total_loss=total_loss)
     return result
 
 def _eval_regressors(regressor_factories, X, y):

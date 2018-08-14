@@ -92,7 +92,7 @@ def over_plot(xvals, uvals, step=1, axis=True, offset=0.01):
 ### Visualising the results of regressors
 
 # Only plots fine grid style stuff at the moment
-def plot_regressors(regressors, names, X, y):
+def plot_regressors(regressors, names, X, y, plot_size=8):
     """Plots the results of some regressors using the given data."""
     
     regressor_factories = [fac.RegressorFactory(regressor=regressor) 
@@ -100,12 +100,14 @@ def plot_regressors(regressors, names, X, y):
     return plot_regressor_factories(regressor_factories, names, X, y)
 
 
-def plot_regressor_factories(regressor_factories, names, X, y):
+def plot_regressor_factories(regressor_factories, names, X, y,
+                             plot_size=8):
     """Plots the results of some regressor factories using the 
     given data.
     """
     
-    fig = plt.figure(figsize=(8, 8 * len(regressor_factories)))
+    fig = plt.figure(figsize=(plot_size, 
+                              plot_size * len(regressor_factories)))
     
     X = np.array([X])
     y = np.array([y])
@@ -121,7 +123,7 @@ def plot_regressor_factories(regressor_factories, names, X, y):
 
 
 # Slightly hacky convenience function
-def plot_reg_and_fac(reg_or_fac, names, X, y):
+def plot_reg_and_fac(reg_or_fac, names, X, y, plot_size=8):
     """Plots the results of either regressors or their factories using
     the given data.
     """
@@ -133,4 +135,5 @@ def plot_reg_and_fac(reg_or_fac, names, X, y):
         else:
             regressor_factories.append(fac.RegressorFactory(regressor=rf))
             
-    return plot_regressor_factories(regressor_factories, names, X, y)
+    return plot_regressor_factories(regressor_factories, names, X, y,
+                                    plot_size)

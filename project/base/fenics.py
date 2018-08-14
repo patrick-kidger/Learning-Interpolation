@@ -526,23 +526,24 @@ class GenGeneralSolution:
     namely one peakon, two peakon, and FEniCS.
     """
     
-    def __init__(self, fenics_num=5, two_peakon_num=4, one_peakon_num=1, 
+    def __init__(self, num_fenics=5, num_two_peakon=4, num_one_peakon=1, 
                  **kwargs):
         """May be passed :fenics_num:, :two_peakon_num: and :one_peakon_num:
         arguments, which specify the proportion (relative to each other) 
         that each type of solution should be created.
         """
-        # Not using dependency inversion, creating a 
-        # 'GeneralSolutionGeneratorFactory' is OTT ravioli code for
-        # this problem. (Things are already looking a bit ravioli-ish
-        # as it is!)
-        if fenics_num > 0:
+        
+        if num_fenics > 0:
+            # Not using dependency inversion, creating a 
+            # 'GenGeneralSolutionFactory' is OTT ravioli code for
+            # this problem. (Things are already looking a bit ravioli-ish
+            # as it is!)
             self.fenics_solution_repeater = FenicsSolutionRepeater(**kwargs)
-            self.gen_functions = [self.fenics_solution_repeater] * fenics_num
+            self.gen_functions = [self.fenics_solution_repeater] * num_fenics
         else:
             self.gen_functions = []
-        self.gen_functions += [dg.TwoPeakon.gen] * two_peakon_num
-        self.gen_functions += [dg.Peakon.gen] * one_peakon_num
+        self.gen_functions += [dg.TwoPeakon.gen] * num_two_peakon
+        self.gen_functions += [dg.Peakon.gen] * num_one_peakon
         
     def __call__(self):
         return tools.random_function(*self.gen_functions)
