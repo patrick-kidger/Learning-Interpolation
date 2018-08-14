@@ -1,8 +1,8 @@
-# Camassa&ndash;Holm Project
+# Interpolating PDE solutions using feedforward neural networks
 
 A project seeking to investigate the possibility of using machine learning to perform better interpolation of solutions to PDEs. The essential idea is that solutions to a particular PDE may tend to take a particular form &ndash; knowing this, can we do better than simple polynomial interpolation?
 
-Our PDE of choice for this project is the [Camassa&ndash;Holm equation](https://en.wikipedia.org/wiki/Camassa-Holm_equation), hence the name of the project!
+Our PDE of choice for this project is the [Camassa&ndash;Holm equation](https://en.wikipedia.org/wiki/Camassa-Holm_equation).
 
 ### Installation
 
