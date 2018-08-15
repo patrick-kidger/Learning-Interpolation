@@ -96,7 +96,7 @@ def _create_variational_problem(m0, u0, W, dt):
     return solver, w, m_prev, u_prev
 
 
-def fenics_solve(initial_condition, t, T, a, b, fineness_t, fineness_x, 
+def fenics_solve(initial_condition, t, T, a, b, fineness_t, fineness_x,
                  smoothing_thresh=0.01):
     """Solves the Camassa--Holm equation numerically, from the given
     :initial_condition:, which should be a string of valid C++ code;

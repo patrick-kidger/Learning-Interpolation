@@ -36,7 +36,7 @@ def _dnn_hyperparameters_from_dir(dir_name):
     
     processor_name = rest[0]
     processor_class = pc.ProcessorBase.find_subclass(processor_name)
-    dnn_details['processor'] = processor_class()
+    dnn_details['compile_kwargs'] = {'processor': processor_class()}
     dnn_details['batch_norm'] = False
     
     activation_name = rest[1].lower()
@@ -77,8 +77,9 @@ def dnn_factory_from_model_dir(model_dir, **kwargs):
     # information saved in the model directory, without needing to know
     # its structure from the directory name...
     dnn_details, uuid = _dnn_hyperparameters_from_dir(dir_name)
+    dnn_details['compile_kwargs']['model_dir'] = model_dir
     dnn_details.update(kwargs)
-    dnn_factory = fac.DNNFactory(model_dir=model_dir, **dnn_details)
+    dnn_factory = fac.DNNFactory(**dnn_details)
     return dnn_factory
 
 

@@ -13,7 +13,7 @@ def _eval_regressor(regressor_factory, X, y):
     """
     
     regressor = regressor_factory()
-    processor = regressor_factory.processor
+    processor = regressor_factory.compile_kwargs.processor
     use_tf = regressor_factory.use_tf
     
     if use_tf:

@@ -54,6 +54,8 @@ class DNNFactory(RegressorFactoryBase):
                  kernel_initializer=tfi.truncated_normal(mean=0, stddev=0.05),
                  compile_kwargs=None,
                  **kwargs):
+        if compile_kwargs is None:
+            compile_kwargs = {}
         self.hidden_units = hidden_units
         self.logits = logits
         self.activation = activation
@@ -62,7 +64,7 @@ class DNNFactory(RegressorFactoryBase):
         self.log_steps = log_steps
         self.batch_norm = batch_norm
         self.kernel_initializer = kernel_initializer
-        self.compile_kwargs = {} if compile_kwargs is None else compile_kwargs
+        self.compile_kwargs = tools.Object.from_dict(compile_kwargs)
         self.use_tf = True
         super(DNNFactory, self).__init__(**kwargs)
 
