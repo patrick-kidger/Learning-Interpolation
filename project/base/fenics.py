@@ -4,6 +4,7 @@ FEniCS or peakon solutions.
 """
 
 import itertools as it
+import json
 import math
 import numpy as np
 import fenics as fc
@@ -199,6 +200,10 @@ class FenicsSolution(dg.SolutionBase):
                  fineness_x=defaults.fineness_x, 
                  line_up=True,
                  smoothing_thresh=0.01,
+                 _solve=True,
+                 _tvals=None,
+                 _xvals=None,
+                 _uvals=None,
                  **kwargs):
         """Numerically determines the solution to the Camassa--Holm equation
         from the given :initial_condition:.
@@ -267,12 +272,15 @@ class FenicsSolution(dg.SolutionBase):
                 tflog.debug(line_up_message)
             initial_condition += ' + ' + linear_str
 
-        tvals, xvals, uvals, converged = fenics_solve(initial_condition, t, T, a, b, 
-                                                      fineness_t, fineness_x,
-                                                      smoothing_thresh=smoothing_thresh)
+        if _solve:
+            tvals, xvals, uvals, converged = fenics_solve(initial_condition, t, T, a, b, 
+                                                          fineness_t, fineness_x,
+                                                          smoothing_thresh=smoothing_thresh)
 
-        if not converged:
-            raise ex.FEniCSConvergenceException
+            if not converged:
+                raise ex.FEniCSConvergenceException
+        else:
+            tvals, xvals, uvals = _tvals, _xvals, _uvals
             
         self.initial_condition = initial_condition
         self.t = t
@@ -293,6 +301,38 @@ class FenicsSolution(dg.SolutionBase):
         t = int(t / self.fineness_t)
         x = int(x / self.fineness_x)
         return self.uvals[t, x]
+    
+    @classmethod
+    def from_save(cls, folder, **kwargs):
+        if folder[-1] not in ('/', '\\'):
+            if '/' in folder:
+                folder += '/'
+            else:
+                folder += '\\'
+        tvals = np.load(folder + 'tvals.npy')
+        xvals = np.load(folder + 'xvals.npy')
+        uvals = np.load(folder + 'uvals.npy')
+        with open(folder + 'other_data') as f:
+            other_data = json.loads(f.read())
+        fineness_t = other_data['fineness_t']
+        fineness_x = other_data['fineness_x']
+        t = other_data['t']
+        T = other_data['T']
+        a = other_data['a']
+        b = other_data['b']
+        initial_condition = other_data['initial_condition']
+        self = cls(initial_condition=initial_condition, 
+                   t=t, T=T, 
+                   a=a, b=b,
+                   fineness_t=fineness_t,  
+                   fineness_x=fineness_x, 
+                   line_up=False,
+                   _solve=False,
+                   _tvals=tvals,
+                   _xvals=xvals,
+                   _uvals=uvals,
+                   **kwargs)
+        return self
     
     @classmethod
     def gen(cls, 
@@ -478,7 +518,7 @@ class FenicsSolutionRepeater:
                  peak_range_offset=defaults.peak_range_offset, 
                  peak_offset=defaults.peak_offset,
                  min_height=defaults.min_height, 
-                 max_height=defaults.max_height, 
+                 max_height=defaults.max_height,
                  **kwargs):
         self.repeat = repeat
         self.current_count = 0
@@ -495,7 +535,14 @@ class FenicsSolutionRepeater:
         self.max_height = max_height
         self.kwargs = kwargs
         
+        self._count = None
+        self.max_thread = None
+        
         self.solution = None
+        
+    def thread_prepare(self, thread, max_thread):
+        self._count = thread
+        self.max_thread = max_thread
         
     def __call__(self):
         if self.current_count >= self.repeat or self.current_count == 0:
@@ -508,6 +555,18 @@ class FenicsSolutionRepeater:
         
     
     def _gen_solution(self):
+        if self._count is not None:
+            try:
+                self.solution = FenicsSolution.from_save('./fenics_data/{}/'
+                                                         .format(self._count))
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                tflog.info("Error whilst loading FEnicCS solution from save; "
+                           "generating FEniCS solution instead. Error message: {}"
+                           .format(e))
+            else:
+                self._count += self.max_thread
+                return
+            
         self.solution = FenicsSolution._gen_solution(self.min_num_peaks, 
                                                      self.max_num_peaks,
                                                      self.min_wobbly, 
@@ -527,7 +586,7 @@ class GenGeneralSolution:
     """
     
     def __init__(self, num_fenics=5, num_two_peakon=4, num_one_peakon=1, 
-                 **kwargs):
+                 fenics_from_save=False, **kwargs):
         """May be passed :fenics_num:, :two_peakon_num: and :one_peakon_num:
         arguments, which specify the proportion (relative to each other) 
         that each type of solution should be created.
@@ -545,24 +604,32 @@ class GenGeneralSolution:
         self.gen_functions += [dg.TwoPeakon.gen] * num_two_peakon
         self.gen_functions += [dg.Peakon.gen] * num_one_peakon
         
+        self.fenics_from_save = fenics_from_save
+        
+    def thread_prepare(self, thread, max_thread):
+        if self.fenics_from_save:
+            if hasattr(self, 'fenics_solution_repeater'):
+                self.fenics_solution_repeater.thread_prepare(thread, max_thread)
+        
     def __call__(self):
         return tools.random_function(*self.gen_functions)
-
     
-class GenGeneralSolutionOnGrid:
-    """Calls to instances return a (feature, label) pair, where the features 
-    are the values of either a single-peakon, a two-peakon, or a FEniCS 
-    solution on a coarse grid, and the labels are the values of the solution
-    on a fine grid.
-    """
     
+class GenGeneralSolutionBase:
     def __init__(self, **kwargs):
         self.gen_solution = GenGeneralSolution(**kwargs)
+        
+    @tools.classproperty
+    def sol_func(cls):
+        raise NotImplementedError
+        
+    def thread_prepare(self, thread, max_thread):
+        self.gen_solution.thread_prepare(thread, max_thread)
         
     def __call__(self):
         while True:
             point, solution = self.gen_solution()
-            X, y = dg.sol_on_grid(point, solution)
+            X, y = self.__class__.sol_func(point, solution)
             # Quick check to make sure that the data is nonconstant, otherwise
             # most preprocessing (scaling) won't work.
             # And really, do you need a neural network to tell you the
@@ -573,23 +640,25 @@ class GenGeneralSolutionOnGrid:
             if np.max(X_corners) - np.min(X_corners) > 0.01:
                 break
         return X, y
+
+    
+class GenGeneralSolutionOnGrid(GenGeneralSolutionBase):
+    """Calls to instances return a (feature, label) pair, where the features 
+    are the values of either a single-peakon, a two-peakon, or a FEniCS 
+    solution on a coarse grid, and the labels are the values of the solution
+    on a fine grid.
+    """
+    
+    sol_func = dg.sol_on_grid
+        
+
         
         
-class GenGeneralSolutionAtPoint:
+class GenGeneralSolutionAtPoint(GenGeneralSolutionBase):
     """Calls to instances return a (feature, label) pair, where the features 
     are the values of either a single-peakon, a two-peakon, or a FEniCS 
     solution on a coarse grid, and the location of a particular point,
     and the labels are the values of the solution on a fine grid.
     """
     
-    def __init__(self, **kwargs):
-        self.gen_solution = GenGeneralSolution(**kwargs)
-        
-    def __call__(self):
-        while True:
-            point, solution = self.gen_solution()
-            X, y = dg.sol_at_point(point, solution)
-            X_corners = [X[i] for i in grid.coarse_grid_center_indices]
-            if np.max(X_corners) - np.min(X_corners) > 0.01:
-                break
-        return X, y
+    sol_func = dg.sol_at_point

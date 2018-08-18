@@ -3,4 +3,5 @@ __pycache__
 *.py[cod]
 .idea
 **/saved_models/*/
+**/fenics_data/*/
 TODO.txt

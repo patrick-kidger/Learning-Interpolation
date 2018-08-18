@@ -342,6 +342,8 @@ class BatchData:
         self.queue = mp.Queue(maxsize=queue_size)
         
         if any([i is None] for i in (X_dtype, y_dtype, X_shape, y_shape)):
+            if hasattr(gen_one_data, 'thread_prepare'):
+                gen_one_data.thread_prepare(0, 1)
             X, y = gen_one_data()
             X_dtype = X.dtype
             y_dtype = y.dtype
@@ -353,14 +355,17 @@ class BatchData:
         self.X_shape = X_shape
         self.y_shape = y_shape
             
-        def _gen_one_data():
-            while True:
-                self.queue.put(gen_one_data())
+        def _gen_one_data(thread, max_thread):
+            def gen_one_data_wrapper():
+                if hasattr(gen_one_data, 'thread_prepare'):
+                    gen_one_data.thread_prepare(thread, max_thread)
+                while True:
+                    self.queue.put(gen_one_data())
                 
         if num_processes is None:
             num_processes = os.cpu_count()
-        self.processes = [mp.Process(target=_gen_one_data)
-                          for _ in range(num_processes)]
+        self.processes = [mp.Process(target=_gen_one_data(i, num_processes))
+                          for i in range(num_processes)]
         for process in self.processes:
             process.start()
             
