@@ -3,8 +3,8 @@ FEniCS. Also provides wrapper classes to randomly produce
 FEniCS or peakon solutions.
 """
 
-import itertools as it
 import json
+import os
 import math
 import numpy as np
 import fenics as fc
@@ -15,7 +15,7 @@ tflog = tf.logging
 # https://github.com/patrick-kidger/tools
 import tools
 
-from . import data_gen as dg
+from . import data_gen_base as dgb
 from . import exceptions as ex
 from . import grid
 
@@ -179,7 +179,7 @@ def fenics_solve(initial_condition, t, T, a, b, fineness_t, fineness_x,
     return tvals, xvals, uvals, True
 
 
-class FenicsSolution(dg.SolutionBase):
+class FenicsSolution(dgb.SolutionBase):
     """Generates a random solution using FEniCS."""
     
     defaults = tools.Object(t=0, T=10, a=0, b=20, 
@@ -302,8 +302,31 @@ class FenicsSolution(dg.SolutionBase):
         x = int(x / self.fineness_x)
         return self.uvals[t, x]
     
+    def save(self, folder):
+        if folder[-1] not in ('/', '\\'):
+            if '/' in folder:
+                folder += '/'
+            else:
+                folder += '\\'
+        os.mkdir(folder)
+        np.save(folder + 'uvals', self.uvals)
+        # Don't really need to save all of this, it's true.
+        # Some of it can be reconstructed simply from the
+        # other information saved.
+        # But this is particular straightforward.
+        np.save(folder + 'tvals', self.tvals)
+        np.save(folder + 'xvals', self.xvals)
+        with open(folder + 'other_data', 'w') as f:
+            f.write(json.dumps({'fineness_t': self.fineness_t, 
+                                'fineness_x': self.fineness_x,
+                                't': self.t,
+                                'T': self.T,
+                                'a': self.a,
+                                'b': self.b,
+                                'initial_condition': self.initial_condition}))
+    
     @classmethod
-    def from_save(cls, folder, **kwargs):
+    def load(cls, folder, **kwargs):
         if folder[-1] not in ('/', '\\'):
             if '/' in folder:
                 folder += '/'
@@ -556,9 +579,9 @@ class FenicsSolutionRepeater:
     
     def _gen_solution(self):
         if self._count is not None:
+            save_dir = './fenics_data/{}/'.format(self._count)
             try:
-                self.solution = FenicsSolution.from_save('./fenics_data/{}/'
-                                                         .format(self._count))
+                self.solution = FenicsSolution.load(save_dir)
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 tflog.info("Error whilst loading FEnicCS solution from save; "
                            "generating FEniCS solution instead. Error message: {}"
@@ -578,87 +601,6 @@ class FenicsSolutionRepeater:
                                                      self.min_height, 
                                                      self.max_height, 
                                                      **self.kwargs)
-
         
-class GenGeneralSolution:
-    """Wraps the three different way of creating solutions that we have: 
-    namely one peakon, two peakon, and FEniCS.
-    """
-    
-    def __init__(self, num_fenics=5, num_two_peakon=4, num_one_peakon=1, 
-                 fenics_from_save=False, **kwargs):
-        """May be passed :fenics_num:, :two_peakon_num: and :one_peakon_num:
-        arguments, which specify the proportion (relative to each other) 
-        that each type of solution should be created.
-        """
-        
-        if num_fenics > 0:
-            # Not using dependency inversion, creating a 
-            # 'GenGeneralSolutionFactory' is OTT ravioli code for
-            # this problem. (Things are already looking a bit ravioli-ish
-            # as it is!)
-            self.fenics_solution_repeater = FenicsSolutionRepeater(**kwargs)
-            self.gen_functions = [self.fenics_solution_repeater] * num_fenics
-        else:
-            self.gen_functions = []
-        self.gen_functions += [dg.TwoPeakon.gen] * num_two_peakon
-        self.gen_functions += [dg.Peakon.gen] * num_one_peakon
-        
-        self.fenics_from_save = fenics_from_save
-        
-    def thread_prepare(self, thread, max_thread):
-        if self.fenics_from_save:
-            if hasattr(self, 'fenics_solution_repeater'):
-                self.fenics_solution_repeater.thread_prepare(thread, max_thread)
-        
-    def __call__(self):
-        return tools.random_function(*self.gen_functions)
-    
-    
-class GenGeneralSolutionBase:
-    def __init__(self, **kwargs):
-        self.gen_solution = GenGeneralSolution(**kwargs)
-        
-    @tools.classproperty
-    def sol_func(cls):
-        raise NotImplementedError
-        
-    def thread_prepare(self, thread, max_thread):
-        self.gen_solution.thread_prepare(thread, max_thread)
-        
-    def __call__(self):
-        while True:
-            point, solution = self.gen_solution()
-            X, y = self.__class__.sol_func(point, solution)
-            # Quick check to make sure that the data is nonconstant, otherwise
-            # most preprocessing (scaling) won't work.
-            # And really, do you need a neural network to tell you the
-            # interpolated values if your input data is constant?
-            X_corners = [X[i] for i in grid.coarse_grid_center_indices]
-            # Ideally we'd have customised checking for each type of
-            # preprocessing but this will do for now
-            if np.max(X_corners) - np.min(X_corners) > 0.01:
-                break
-        return X, y
-
-    
-class GenGeneralSolutionOnGrid(GenGeneralSolutionBase):
-    """Calls to instances return a (feature, label) pair, where the features 
-    are the values of either a single-peakon, a two-peakon, or a FEniCS 
-    solution on a coarse grid, and the labels are the values of the solution
-    on a fine grid.
-    """
-    
-    sol_func = dg.sol_on_grid
-        
-
-        
-        
-class GenGeneralSolutionAtPoint(GenGeneralSolutionBase):
-    """Calls to instances return a (feature, label) pair, where the features 
-    are the values of either a single-peakon, a two-peakon, or a FEniCS 
-    solution on a coarse grid, and the location of a particular point,
-    and the labels are the values of the solution on a fine grid.
-    """
-    
-    sol_func = dg.sol_at_point
+        if self._count is not None:
+            self.solution.save(save_dir)

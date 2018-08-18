@@ -9,48 +9,19 @@ import os
 
 import tensorflow as tf
 tfd = tf.data
-tflog = tf.logging
 
 # https://github.com/patrick-kidger/tools
 import tools
 
+from . import data_gen_base as dgb
 from . import exceptions as ex
+from . import fenics as fc
 from . import grid
 
 
 ### Solutions to the Camassa--Holm equation
-
-class SolutionBase:
-    def __call__(self, point):
-        """Evaluates the solution at the particular point."""
-        raise NotImplementedError
-        
-    def on_grid(self, grid, extra=0):
-        """Evaluates the solution on a grid of points.
-        
-        :[(float, float)] grid: The grid points on which to evaluate, as
-            returned by either fine_grid or coarse_grid.
-        :int extra: A nonnegative integer specifying that the array should be
-            larger by this many entries. (To add extra data to later without the
-            overheard of creating another array.)"""
-        return np.array([self(grid_point) for grid_point in grid] 
-                        + [0 for _ in range(extra)])
     
-    def on_vals(self, tvals, xvals):
-        """Evalutes the solution on a grid of points corresponding to
-        the mesh grid produced by :tvals: and :xvals:
-        """
-        return np.array([[self((t, x)) for x in xvals] for t in tvals])
-    
-    @classmethod
-    def gen(cls):
-        """Generates a random solution of this form, and a random location
-        around which to evaluate it.
-        """
-        raise NotImplementedError
-
-    
-class Peakon(SolutionBase):
+class Peakon(dgb.SolutionBase):
     """Simplest solution to the k=0 Camassa-Holm equation.
     
     Represents a soliton with a peak.
@@ -74,12 +45,12 @@ class Peakon(SolutionBase):
         c = np.random.uniform(3, 10)
         self = cls(c=c)
         # Random location near the peak
-        t = np.random.uniform(0, 10)
-        x = c * t + np.random.uniform(-2, 2)
+        t = 0
+        x = np.random.uniform(-2, 2)
         return (t, x), self
     
 
-class TwoPeakon(SolutionBase):
+class TwoPeakon(dgb.SolutionBase):
     """Represents two solitons with peaks! Nonlinear effects start determining
     it location and magnitude.
     """
@@ -160,114 +131,133 @@ class TwoPeakon(SolutionBase):
         x = middle + semidist * np.random.uniform(-1, 1) ** 3
         return (t, x), self
     
-# And for more peakons the algebra gets disgusting (and more importantly, slow), so 
-# we'll leave it at two peakons for exact solutions.
+# And for more peakons the algebra gets disgusting, so we'll leave it at two 
+# peakons for exact solutions.
 
-
-### (Feature, label) generation
-
-def sol_on_grid(point, solution):
-    """Returns the values of the :solution: on fine and coarse grids around the
-    specified :point:.
-    """
-    # Grids at the location
-    cg = grid.coarse_grid(point)
-    fg = grid.fine_grid(point)
-    # Features: the solution on the coarse grid
-    X = solution.on_grid(cg)
-    # Labels: the solution on the fine grid
-    y = solution.on_grid(fg)
-    return X, y
-
-
-def sol_at_point(point, solution):
-    """Returns the values of the :solution: on a coarse grid and at a random
-    point near the specified :point:.
+        
+class GenGeneralSolution:
+    """Wraps the three different way of creating solutions that we have: 
+    namely one peakon, two peakon, and FEniCS.
     """
     
-    cg = grid.coarse_grid(point)
+    def __init__(self, num_fenics=5, num_two_peakon=4, num_one_peakon=1, 
+                 fenics_from_save=False, **kwargs):
+        """May be passed :fenics_num:, :two_peakon_num: and :one_peakon_num:
+        arguments, which specify the proportion (relative to each other) 
+        that each type of solution should be created.
+        """
+        
+        if num_fenics > 0:
+            # Not using dependency inversion, creating a 'GenSolutionFactory' 
+            # is OTT ravioli code for this problem.
+            self.fenics_solution_repeater = fc.FenicsSolutionRepeater(**kwargs)
+            self.gen_functions = [self.fenics_solution_repeater] * num_fenics
+        else:
+            self.gen_functions = []
+        self.gen_functions += [TwoPeakon.gen] * num_two_peakon
+        self.gen_functions += [Peakon.gen] * num_one_peakon
+        
+        self.fenics_from_save = fenics_from_save
+        
+    def thread_prepare(self, thread, max_thread):
+        if self.fenics_from_save:
+            if hasattr(self, 'fenics_solution_repeater'):
+                self.fenics_solution_repeater.thread_prepare(thread, max_thread)
+        
+    def __call__(self):
+        return tools.random_function(*self.gen_functions)
     
-    # Random offset from the random location that we ask for predictions at. The
-    # distribution is asymmetric because we're moving relative to :point:, which
-    # is in the _bottom left_ of the central cell of the coarse grid. The asymmetric
-    # distribution thus makes this relative to te centre of the central cell.
-    #
-    # This value is not scaled relative to the size of the grid as we expect
-    # that the predictions should be scale invariant, and we do not want the
-    # network to unnecessarily learn the size of coarse_grid_sep.
-    x_offset = np.random.uniform(-0.5, 1.5)
-    t_offset = np.random.uniform(-0.5, 1.5)
     
-    # Features: the solution on the coarse grid and the point to interpolate at.
-    X = solution.on_grid(cg, extra=2)
-    # We tell the network the offset; as the network has no way of knowing the
-    # location of the grid then adding a translation would only confuse it.
-    X[-2] = t_offset - 0.5  # -0.5 to normalise
-    X[-1] = x_offset - 0.5  # -0.5 to normalise
-    # (Yeah, it's a bit hacky to just add them on like this. Really I should
-    # convert everything over to having X be a dictionary...)
+class GenSolutionBase:
+    def __init__(self, **kwargs):
+        self.gen_solution = GenGeneralSolution(**kwargs)
+        
+    @staticmethod
+    def sol_func(point, solution):
+        raise NotImplementedError
+        
+    def thread_prepare(self, thread, max_thread):
+        self.gen_solution.thread_prepare(thread, max_thread)
+        
+    def __call__(self):
+        while True:
+            point, solution = self.gen_solution()
+            X, y = self.sol_func(point, solution)
+            # Quick check to make sure that the data is nonconstant, otherwise
+            # most preprocessing (scaling) won't work.
+            # And really, do you need a neural network to tell you the
+            # interpolated values if your input data is constant?
+            X_corners = [X[i] for i in grid.coarse_grid_center_indices]
+            # Ideally we'd have customised checking for each type of
+            # preprocessing but this will do for now
+            if np.max(X_corners) - np.min(X_corners) > 0.01:
+                break
+        return X, y
+
     
-    t, x = point
-    # Label: the solution at the interpolation point
-    y = np.full(1, solution((t + t_offset * grid.coarse_grid_sep.t, 
-                             x + x_offset * grid.coarse_grid_sep.x)))
+class GenSolutionOnGrid(GenSolutionBase):
+    """Calls to instances return a (feature, label) pair, where the features 
+    are the values of either a single-peakon, a two-peakon, or a FEniCS 
+    solution on a coarse grid, and the labels are the values of the solution
+    on a fine grid.
+    """
     
-    return X, y
-
-
-def gen_one_peakon_on_grid():
-    """Returns a (feature, label) pair, where the features are the values of
-    a single-peakon solution on a coarse grid, and the labels are the values of
-    the single-peakon solution on a fine grid.
+    @staticmethod
+    def sol_func(point, solution):
+        """Returns the values of the :solution: on fine and coarse grids around the
+        specified :point:.
+        """
+        # Grids at the location
+        cg = grid.coarse_grid(point)
+        fg = grid.fine_grid(point)
+        # Features: the solution on the coarse grid
+        X = solution.on_grid(cg)
+        # Labels: the solution on the fine grid
+        y = solution.on_grid(fg)
+        return X, y
+         
+        
+class GenSolutionAtPoint(GenSolutionBase):
+    """Calls to instances return a (feature, label) pair, where the features 
+    are the values of either a single-peakon, a two-peakon, or a FEniCS 
+    solution on a coarse grid, and the location of a particular point,
+    and the labels are the values of the solution on a fine grid.
     """
-    point, peakon = Peakon.gen()
-    return sol_on_grid(point, peakon)
+    
+    @staticmethod
+    def sol_func(point, solution):
+        """Returns the values of the :solution: on a coarse grid and at a random
+        point near the specified :point:.
+        """
 
+        cg = grid.coarse_grid(point)
 
-def gen_two_peakon_on_grid():
-    """Returns a (feature, label) pair, where the features are the values of
-    a two-peakon solution on a coarse grid, and the labels are the values of
-    the two-peakon solution on a fine grid.
-    """
-    point, twopeakon = TwoPeakon.gen()
-    return sol_on_grid(point, twopeakon)
+        # Random offset from the random location that we ask for predictions at. The
+        # distribution is asymmetric because we're moving relative to :point:, which
+        # is in the _bottom left_ of the central cell of the coarse grid. The asymmetric
+        # distribution thus makes this relative to te centre of the central cell.
+        #
+        # This value is not scaled relative to the size of the grid as we expect
+        # that the predictions should be scale invariant, and we do not want the
+        # network to unnecessarily learn the size of coarse_grid_sep.
+        x_offset = np.random.uniform(-0.5, 1.5)
+        t_offset = np.random.uniform(-0.5, 1.5)
 
+        # Features: the solution on the coarse grid and the point to interpolate at.
+        X = solution.on_grid(cg, extra=2)
+        # We tell the network the offset; as the network has no way of knowing the
+        # location of the grid then adding a translation would only confuse it.
+        X[-2] = t_offset - 0.5  # -0.5 to normalise
+        X[-1] = x_offset - 0.5  # -0.5 to normalise
+        # (Yeah, it's a bit hacky to just add them on like this. Really I should
+        # convert everything over to having X be a dictionary...)
 
-def gen_peakons_on_grid():
-    """Returns a (feature, label) pair, where the features are the values of
-    either a one-peakon or a two-peakon solution on a coarse grid, and the 
-    labels are the values of the peakon solution on a fine grid.
-    """
-    return tools.random_function(gen_one_peakon_on_grid, gen_two_peakon_on_grid)
+        t, x = point
+        # Label: the solution at the interpolation point
+        y = np.full(1, solution((t + t_offset * grid.coarse_grid_sep.t, 
+                                 x + x_offset * grid.coarse_grid_sep.x)))
 
-
-def gen_one_peakon_at_point():
-    """Returns a (feature, label) pair, where the features are the values of
-    a single-peakon solution on a coarse grid and the location of a particular
-    point, and the label is the value of the single-peakon solution at that
-    point.
-    """
-    point, peakon = Peakon.gen()
-    return sol_at_point(point, peakon)
-
-
-def gen_two_peakon_at_point():
-    """Returns a (feature, label) pair, where the features are the values of
-    a two-peakon solution on a coarse grid and the location of a particular
-    point, and the label is the value of the two-peakon solution at that
-    point.
-    """
-    point, twopeakon = TwoPeakon.gen()
-    return sol_at_point(point, twopeakon)
-
-
-def gen_peakons_at_point():
-    """Returns a (feature, label) pair, where the features are the values of
-    either a one-peakon or a two-peakon solution on a coarse grid, and the 
-    location of a particular point, and the label is the value of the 
-    peakon solution at that point.
-    """
-    return tools.random_function(gen_one_peakon_at_point, gen_two_peakon_at_point)
+        return X, y
 
 
 # A particularly nice X, y that is right on the peak of the peakon
@@ -311,7 +301,7 @@ y_peak = np.array([5.34308947, 5.28992485, 5.23728921, 5.18517732, 5.13358394,
                    5.69745227])
 
 
-### Multithreaded generated and batching of data
+### Multithreaded generating and batching of data
 
 class BatchData:
     """Multithreading wrapper around tf.data.Dataset. Note that its
@@ -340,32 +330,31 @@ class BatchData:
         
         self.batch_size = batch_size
         self.queue = mp.Queue(maxsize=queue_size)
-        
+
         if any([i is None] for i in (X_dtype, y_dtype, X_shape, y_shape)):
-            if hasattr(gen_one_data, 'thread_prepare'):
-                gen_one_data.thread_prepare(0, 1)
+            gen_one_data.thread_prepare(0, 1)
             X, y = gen_one_data()
             X_dtype = X.dtype
             y_dtype = y.dtype
             X_shape = X.shape
             y_shape = y.shape
-            self.queue.put((X, y))
         self.X_dtype = X_dtype
         self.y_dtype = y_dtype
         self.X_shape = X_shape
         self.y_shape = y_shape
-            
+
         def _gen_one_data(thread, max_thread):
             def gen_one_data_wrapper():
-                if hasattr(gen_one_data, 'thread_prepare'):
-                    gen_one_data.thread_prepare(thread, max_thread)
+                gen_one_data.thread_prepare(thread, max_thread)
                 while True:
                     self.queue.put(gen_one_data())
+            return gen_one_data_wrapper
                 
         if num_processes is None:
             num_processes = os.cpu_count()
         self.processes = [mp.Process(target=_gen_one_data(i, num_processes))
                           for i in range(num_processes)]
+        
         for process in self.processes:
             process.start()
             

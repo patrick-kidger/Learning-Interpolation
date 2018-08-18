@@ -6,17 +6,14 @@ They are large and separate enough, respectively, to be worth
 importing separately.
 """
 
-from .data_gen import (SolutionBase,
-                       Peakon,
+from .data_gen_base import SolutionBase
+
+from .data_gen import (Peakon,
                        TwoPeakon,
-                       sol_on_grid,
-                       sol_at_point,
-                       gen_one_peakon_on_grid,
-                       gen_two_peakon_on_grid,
-                       gen_peakons_on_grid,
-                       gen_one_peakon_at_point,
-                       gen_two_peakon_at_point,
-                       gen_peakons_at_point,
+                       GenGeneralSolution,
+                       GenSolutionBase,
+                       GenSolutionOnGrid,
+                       GenSolutionAtPoint,
                        X_peak,
                        y_peak,
                        BatchData)
