@@ -97,7 +97,7 @@ class RegressorFactory(RegressorFactoryBase):
     
     def __init__(self, regressor, **kwargs):
         self.regressor = regressor
-        self.processor = pc.IdentityProcessor()
+        self.compile_kwargs = tools.Object(processor=pc.IdentityProcessor())
         self.use_tf = False
         super(RegressorFactory, self).__init__(**kwargs)
         

@@ -160,6 +160,7 @@ class GenGeneralSolution:
         self.fenics_from_save = fenics_from_save
         
     def thread_prepare(self, thread, max_thread):
+        np.random.seed(thread)
         if self.fenics_from_save:
             if hasattr(self, 'fenics_solution_repeater'):
                 self.fenics_solution_repeater.thread_prepare(thread, max_thread)
