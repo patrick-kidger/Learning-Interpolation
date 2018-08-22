@@ -77,7 +77,7 @@ class InterpolatorBase:
             yield returnval
 
             
-class FineGridInterpolator(InterpolatorBase):
+class InterpolatorGrid(InterpolatorBase):
     """Provides the predict_single function for predictions on a fine grid.
     
     Requires the _prepare and _interp methods provided by one of the mixins
@@ -94,7 +94,7 @@ class FineGridInterpolator(InterpolatorBase):
         return returnval
     
     
-class PointInterpolator(InterpolatorBase):
+class InterpolatorPoint(InterpolatorBase):
     """Provides the predict_single function for predictions at a single point.
     
     Requires the _prepare and _interp methods provided by one of the mixins
@@ -221,19 +221,19 @@ class NearestInterpMixin(InterpolatorBase):
         return t_n_x_n
     
     
-class FineGridBilinearInterp(BilinearInterpMixin, FineGridInterpolator):
+class BilinearInterpGrid(BilinearInterpMixin, InterpolatorGrid):
     pass
 
 
-class FineGridPolyInterp(PolyInterpMixin, FineGridInterpolator):
+class PolyInterpGrid(PolyInterpMixin, InterpolatorGrid):
     pass
 
 
-class PointBilinearInterp(BilinearInterpMixin, PointInterpolator):
+class BilinearInterpPoint(BilinearInterpMixin, InterpolatorPoint):
     pass
 
 
-class PointPolyInterp(PolyInterpMixin, PointInterpolator):
+class PolyInterpPoint(PolyInterpMixin, InterpolatorPoint):
     pass
     
     

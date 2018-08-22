@@ -542,6 +542,7 @@ class FenicsSolutionRepeater:
                  peak_offset=defaults.peak_offset,
                  min_height=defaults.min_height, 
                  max_height=defaults.max_height,
+                 save_dir='./fenics_data/{}/',
                  **kwargs):
         self.repeat = repeat
         self.current_count = 0
@@ -558,12 +559,15 @@ class FenicsSolutionRepeater:
         self.max_height = max_height
         self.kwargs = kwargs
         
-        self._count = None
-        self.max_thread = None
+        self.save_dir = save_dir
+        
+        self._count = 0
+        self.max_thread = 1
         
         self.solution = None
         
     def thread_prepare(self, thread, max_thread):
+        self.current_count = 0
         self._count = thread
         self.max_thread = max_thread
         
@@ -579,7 +583,7 @@ class FenicsSolutionRepeater:
     
     def _gen_solution(self):
         if self._count is not None:
-            save_dir = './fenics_data/{}/'.format(self._count)
+            save_dir = self.save_dir.format(self._count)
             try:
                 self.solution = FenicsSolution.load(save_dir)
             except (FileNotFoundError, json.JSONDecodeError) as e:

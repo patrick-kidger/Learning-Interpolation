@@ -196,7 +196,7 @@ class GenSolutionBase:
         return X, y
 
     
-class GenSolutionOnGrid(GenSolutionBase):
+class GenSolutionGrid(GenSolutionBase):
     """Calls to instances return a (feature, label) pair, where the features 
     are the values of either a single-peakon, a two-peakon, or a FEniCS 
     solution on a coarse grid, and the labels are the values of the solution
@@ -218,7 +218,7 @@ class GenSolutionOnGrid(GenSolutionBase):
         return X, y
          
         
-class GenSolutionAtPoint(GenSolutionBase):
+class GenSolutionPoint(GenSolutionBase):
     """Calls to instances return a (feature, label) pair, where the features 
     are the values of either a single-peakon, a two-peakon, or a FEniCS 
     solution on a coarse grid, and the location of a particular point,
@@ -333,7 +333,6 @@ class BatchData:
         self.queue = mp.Queue(maxsize=queue_size)
 
         if any([i is None] for i in (X_dtype, y_dtype, X_shape, y_shape)):
-            gen_one_data.thread_prepare(0, 1)
             X, y = gen_one_data()
             X_dtype = X.dtype
             y_dtype = y.dtype
@@ -408,7 +407,7 @@ class BatchData:
         Its return value is not wrapped in a tf.data.Dataset.
         """
         
-        with cls.context(gen_one_data=gen_one_data, batch_size=batch_size) as self:
+        with cls.context(gen_one_data=gen_one_data) as self:
             X_batch = []
             y_batch = []
             for _ in range(batch_size):
