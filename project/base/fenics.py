@@ -373,6 +373,35 @@ class FenicsSolution(dgb.SolutionBase):
         """Generates a random solution of this form, and a random location
         around which to evaluate it.
         
+        Its arguments are the same as gen_solution; see its docstring for an
+        explanation of their behaviour.
+        """
+        
+        self = cls.gen_solution(min_num_peaks, max_num_peaks, 
+                                min_wobbly, max_wobbly, 
+                                wobbly_const_coef_lim, wobbly_lin_coef_lim,
+                                peak_range_offset, peak_offset,
+                                min_height, max_height, 
+                                **kwargs)
+        point = cls._gen_point(**kwargs)
+        
+        return point, self
+        
+    @classmethod
+    def gen_solution(cls,
+                     min_num_peaks=defaults.min_num_peaks, 
+                     max_num_peaks=defaults.max_num_peaks, 
+                     min_wobbly=defaults.min_wobbly, 
+                     max_wobbly=defaults.max_wobbly,
+                     wobbly_const_coef_lim=defaults.wobbly_const_coef_lim, 
+                     wobbly_lin_coef_lim=defaults.wobbly_lin_coef_lim, 
+                     peak_range_offset=defaults.peak_range_offset, 
+                     peak_offset=defaults.peak_offset,
+                     min_height=defaults.min_height, 
+                     max_height=defaults.max_height,
+                     **kwargs):
+        """Generates a random solution.
+        
         The arguments :min_num_peaks:, :max_num_peaks:, :min_wobbly:, :max_wobbly:,
         :min_height:, :max_height:, :peak_offset: determine the nature of the 
         automatically generated initial condition.
@@ -413,26 +442,6 @@ class FenicsSolution(dgb.SolutionBase):
         
         Any additional kwargs (e.g. :a:, :b:) are passed on to __init__.
         """
-        
-        self = cls._gen_solution(min_num_peaks, max_num_peaks, 
-                                 min_wobbly, max_wobbly, 
-                                 wobbly_const_coef_lim, wobbly_lin_coef_lim,
-                                 peak_range_offset, peak_offset,
-                                 min_height, max_height, 
-                                 **kwargs)
-        point = cls._gen_point(**kwargs)
-        
-        return point, self
-        
-    @classmethod
-    def _gen_solution(cls, 
-                      min_num_peaks, max_num_peaks, 
-                      min_wobbly, max_wobbly, 
-                      wobbly_const_coef_lim, wobbly_lin_coef_lim,
-                      peak_range_offset, peak_offset,
-                      min_height, max_height, 
-                      **kwargs):
-        """Handles the generation of the numerical solution."""
         
         a = kwargs.get('a', cls.defaults.a)
         b = kwargs.get('b', cls.defaults.b)
@@ -594,17 +603,17 @@ class FenicsSolutionRepeater:
                 self._count += self.max_thread
                 return
             
-        self.solution = FenicsSolution._gen_solution(self.min_num_peaks, 
-                                                     self.max_num_peaks,
-                                                     self.min_wobbly, 
-                                                     self.max_wobbly,
-                                                     self.wobbly_const_coef_lim, 
-                                                     self.wobbly_lin_coef_lim,
-                                                     self.peak_range_offset, 
-                                                     self.peak_offset,
-                                                     self.min_height, 
-                                                     self.max_height, 
-                                                     **self.kwargs)
+        self.solution = FenicsSolution.gen_solution(self.min_num_peaks, 
+                                                    self.max_num_peaks,
+                                                    self.min_wobbly, 
+                                                    self.max_wobbly,
+                                                    self.wobbly_const_coef_lim, 
+                                                    self.wobbly_lin_coef_lim,
+                                                    self.peak_range_offset, 
+                                                    self.peak_offset,
+                                                    self.min_height, 
+                                                    self.max_height, 
+                                                    **self.kwargs)
         
         if self._count is not None:
             self.solution.save(save_dir)
