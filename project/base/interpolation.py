@@ -148,6 +148,35 @@ class BilinearInterpMixin(InterpolatorBase):
         return returnval
     
     
+def poly(point, poly_coefs, poly_deg):
+    """Interprets the given :poly_coefs: as a polynomial, and 
+    evaluates them at the specified :point:.
+    The argument :poly_deg: is used to check that poly_coefs
+    is of a suitable length to be interpreted as polynomial
+    coefficients.
+    """
+
+    t, x = point
+    coefs = iter(poly_coefs)
+
+    result = next(coefs)  # Intercept, i.e. constant term
+    for power in range(1, poly_deg + 1):
+        for x_power in range(0, power + 1):
+            t_power = power - x_power
+            coef = next(coefs)
+            result += coef * (t ** t_power) * (x ** x_power)
+    try:
+        next_coef = next(coefs)
+    except StopIteration:
+        return result
+    else:
+        raise RuntimeError('coef_: {coef_}, poly_deg: {poly_deg}, '
+                           'coef that shouldn\'t exist: {next_coef}'
+                           .format(coef_=coef_, 
+                                   poly_deg=poly_deg, 
+                                   next_coef=next_coef))
+    
+    
 class PolyInterpMixin(InterpolatorBase):
     """Mixin to help perform polynomial interpolation."""
     
@@ -158,30 +187,13 @@ class PolyInterpMixin(InterpolatorBase):
         
     def poly(self, point):
         """Interprets its currently stored polynomial coefficients as a 
-        polynomial, and evaluates them at the specified point."""
+        polynomial, and evaluates them at the specified :point:.
+        """
         
         if self._poly_coefs is None:
             raise RuntimeError('Must run _prepare first!')
-        
-        t, x = point
-        coefs = iter(self._poly_coefs)
-
-        result = next(coefs)  # Intercept, i.e. constant term
-        for power in range(1, self.poly_deg + 1):
-            for x_power in range(0, power + 1):
-                t_power = power - x_power
-                coef = next(coefs)
-                result += coef * (t ** t_power) * (x ** x_power)
-        try:
-            next_coef = next(coefs)
-        except StopIteration:
-            return result
-        else:
-            raise RuntimeError('coef_: {coef_}, poly_deg: {poly_deg}, '
-                               'coef that shouldn\'t exist: {next_coef}'
-                               .format(coef_=coef_, 
-                                       poly_deg=self.poly_deg, 
-                                       next_coef=next_coef))
+        # poly is defined separately that other things can use it.
+        return poly(point, self._poly_coefs, self.poly_deg)
     
     def _prepare(self, Xi):
         poly_features = skpr.PolynomialFeatures(degree=self.poly_deg, 

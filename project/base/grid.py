@@ -81,6 +81,8 @@ def _index_tol(cg, point, tol=0.001):
     raise ValueError('{} is not in {}'.format(point, type(cg)))
     
 _cg = coarse_grid((0, 0))
+# Which elements of the return from coarse_grid correspond to the central 
+# grid square of the coarse grid
 coarse_grid_center_indices = tuple(_index_tol(_cg, point) for point in 
                                    ((0, 0), 
                                     (coarse_grid_sep.t, 0), 
@@ -88,6 +90,8 @@ coarse_grid_center_indices = tuple(_index_tol(_cg, point) for point in
                                     (coarse_grid_sep.t, coarse_grid_sep.x))
                                   )
 _fg = fine_grid((0, 0))
+# Which elements of the return from fine_grid correspond to the central
+# grid square of the coarse grid
 fine_grid_center_indices = tuple(_index_tol(_fg, point) for point in 
                                  ((0, 0), 
                                   (coarse_grid_sep.t, 0), 

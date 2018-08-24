@@ -303,6 +303,9 @@ class FenicsSolution(dgb.SolutionBase):
         return self.uvals[t, x]
     
     def save(self, folder):
+        """Saves the FEniCS solution to the specified :folder:, which
+        should be a string.
+        """
         if folder[-1] not in ('/', '\\'):
             if '/' in folder:
                 folder += '/'
@@ -327,6 +330,10 @@ class FenicsSolution(dgb.SolutionBase):
     
     @classmethod
     def load(cls, folder, **kwargs):
+        """Loads a FEniCS solutions from the specified :folder:, which
+        should be a string. Any additional :**kwargs: are passed on to
+        the initialisation of the class.
+        """
         if folder[-1] not in ('/', '\\'):
             if '/' in folder:
                 folder += '/'
@@ -489,17 +496,12 @@ class FenicsSolution(dgb.SolutionBase):
         return self
        
     @classmethod
-    def _gen_point(cls, **kwargs):
+    def _gen_point(cls,
+                   a=defaults.a, b=defaults.b,
+                   t=defaults.t, T=defaults.T,
+                   fineness_t=defaults.fineness_t,
+                   fineness_x=defaults.fineness_x):
         """Handles the generation of a particular point."""
-        
-        a = kwargs.pop('a', cls.defaults.a)
-        b = kwargs.pop('b', cls.defaults.b)
-        t = kwargs.pop('t', cls.defaults.t)
-        T = kwargs.pop('T', cls.defaults.T)
-        fineness_t = kwargs.pop('fineness_t', cls.defaults.fineness_t)
-        fineness_x = kwargs.pop('fineness_x', cls.defaults.fineness_x)
-        if kwargs != {}:
-            raise TypeError("_gen_point() got unexpected keyword arguments {}".format(kwargs))
         # The coarse grid musn't have any part of it lie outside [t, T]x[a, b],
         # as we don't have any data there.
         # (Taking off all of grid.num_intervals, rather than just half of it, 
@@ -553,9 +555,12 @@ class FenicsSolutionRepeater:
                  max_height=defaults.max_height,
                  save_dir='./fenics_data/{}/',
                  **kwargs):
+        # repeat is the maximum number of repeats, current_count
+        # is how many times we've repeated so far
         self.repeat = repeat
         self.current_count = 0
         
+        # arguments for creating new solutions
         self.min_num_peaks = min_num_peaks
         self.max_num_peaks = max_num_peaks
         self.min_wobbly = min_wobbly
@@ -568,14 +573,24 @@ class FenicsSolutionRepeater:
         self.max_height = max_height
         self.kwargs = kwargs
         
+        # The directory to place save folders in
         self.save_dir = save_dir
         
+        # _count is how far through the saved solutions we are
         self._count = 0
+        # We need to know the maximum number of threads so that each thread
+        # accesses different saved solutions
         self.max_thread = 1
         
+        # The current solution
         self.solution = None
         
     def thread_prepare(self, thread, max_thread):
+        """Should be called at the start of each thread, so that each thread
+        has different random initialisation. Should be told the maximum number
+        of threads, :max_thread:, and which :thread: it is, which should be an
+        integer in range(0, max_thread).
+        """
         self.current_count = 0
         self._count = thread
         self.max_thread = max_thread
@@ -591,6 +606,7 @@ class FenicsSolutionRepeater:
         
     
     def _gen_solution(self):
+        """Gets a new FEniCS solution."""
         if self._count is not None:
             save_dir = self.save_dir.format(self._count)
             try:

@@ -1,4 +1,5 @@
 """Provides for plotting results."""
+
 # Pretty pictures!
 #
 #          ;M";::;; 
@@ -92,18 +93,24 @@ def over_plot(xvals, uvals, step=1, axis=True, offset=0.01):
 ### Visualising the results of regressors
 
 # Only plots fine grid style stuff at the moment
-def plot_regressors(regressors, names, X, y, plot_size=8):
+def plot_regressors(regressors, *args, **kwargs):
     """Plots the results of some regressors using the given data."""
     
     regressor_factories = [fac.RegressorFactory(regressor=regressor) 
                            for regressor in regressors]
-    return plot_regressor_factories(regressor_factories, names, X, y)
+    return plot_regressor_factories(regressor_factories, *args, **kwargs)
 
 
-def plot_regressor_factories(regressor_factories, names, X, y,
-                             plot_size=8):
-    """Plots the results of some regressor factories using the 
-    given data.
+def plot_regressor_factories(regressor_factories, names, X, y, plot_size=8, 
+                             legend=True, ticklabels=True):
+    """Plots the results of some :regressor_factories: using the 
+    given data :X: :y:.
+    Other arguments:
+    :int plot_size: How large to plot the results. Defaults to 8.
+    :bool legend: Whether or not to put a legend on the plots. Defaults to
+        True.
+    :bool ticklabels: Whether or not to put ticklabels on the plots. 
+        Defaults to True.
     """
     
     fig = plt.figure(figsize=(plot_size, 
@@ -117,13 +124,18 @@ def plot_regressor_factories(regressor_factories, names, X, y,
         ax = make_3d_ax_for_grid_plotting(fig, (len(regressor_factories), 1, i + 1))
         grid_plot(ax, X, 'cg', '_nolegend_')
         grid_plot(ax, result.prediction, 'fg', name)
-        ax.legend()
+        if legend:
+            ax.legend()
+        if not ticklabels:
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_zticklabels([])
         
     return results
 
 
 # Slightly hacky convenience function
-def plot_reg_and_fac(reg_or_fac, names, X, y, plot_size=8):
+def plot_reg_and_fac(reg_or_fac, *args, **kwargs):
     """Plots the results of either regressors or their factories using
     the given data.
     """
@@ -135,5 +147,4 @@ def plot_reg_and_fac(reg_or_fac, names, X, y, plot_size=8):
         else:
             regressor_factories.append(fac.RegressorFactory(regressor=rf))
             
-    return plot_regressor_factories(regressor_factories, names, X, y,
-                                    plot_size)
+    return plot_regressor_factories(regressor_factories, *args, **kwargs)

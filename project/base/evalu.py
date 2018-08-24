@@ -2,6 +2,9 @@
 
 import numpy as np
 
+import tensorflow as tf
+tflog = tf.logging
+
 # https://github.com/patrick-kidger/tools
 import tools
 
@@ -40,11 +43,15 @@ def _eval_regressor(regressor_factory, X, y):
                           total_loss=total_loss)
     return result
 
-def _eval_regressors(regressor_factories, X, y):
+def _eval_regressors(regressor_factories, X, y, names=None):
     """Evaluates an iterable of regressors on some test data
     :X:, :y:."""
     results = []
-    for regressor_factory in regressor_factories:
+    if names is None:
+        names = [None] * len(regressor_factories)
+    for regressor_factory, name in zip(regressor_factories, names):
+        if name is not None:
+            tflog.info("Evaluating {}".format(name))
         result = _eval_regressor(regressor_factory, X, y)
         results.append(result)
         
@@ -59,9 +66,9 @@ def eval_regressor(regressor_factory, gen_one_data, batch_size=1):
     return _eval_regressor(regressor_factory, X, y)
 
 
-def eval_regressors(regressor_factories, gen_one_data, batch_size=1):
+def eval_regressors(regressor_factories, gen_one_data, batch_size=1, names=None):
     """Evaluates an iterable of regressors on some test data of size
     :batch_size: generated from :gen_one_data:.
     """
     X, y = dg.BatchData.batch(gen_one_data, batch_size)
-    return _eval_regressors(regressor_factories, X, y)
+    return _eval_regressors(regressor_factories, X, y, names=names)

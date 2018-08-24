@@ -6,6 +6,8 @@ import numpy as np
 
 
 class SolutionBase:
+    """An abstract base class for solutions to the Camassa-Holm equation.
+    """
     def __call__(self, point):
         """Evaluates the solution at the particular point."""
         raise NotImplementedError

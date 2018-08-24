@@ -160,6 +160,11 @@ class GenGeneralSolution:
         self.fenics_from_save = fenics_from_save
         
     def thread_prepare(self, thread, max_thread):
+        """Should be called at the start of each thread, so that each thread
+        has different random initialisation. Should be told the maximum number
+        of threads, :max_thread:, and which :thread: it is, which should be an
+        integer in range(0, max_thread).
+        """
         np.random.seed(thread)
         if self.fenics_from_save:
             if hasattr(self, 'fenics_solution_repeater'):
@@ -169,18 +174,48 @@ class GenGeneralSolution:
         return tools.random_function(*self.gen_functions)
     
     
+class GenSpecificSolution:
+    """Wraps a specific way of creating a solution."""
+    
+    def __init__(self, gen_function):
+        self.gen_function = gen_function
+        
+    def thread_prepare(self, thread, max_thread):
+        """Should be called at the start of each thread, so that each thread
+        has different random initialisation. Should be told the maximum number
+        of threads, :max_thread:, and which :thread: it is, which should be an
+        integer in range(0, max_thread).
+        """
+        np.random.seed(thread)
+        
+    def __call__(self):
+        return self.gen_function()
+    
+    
 class GenSolutionBase:
-    def __init__(self, **kwargs):
-        self.gen_solution = GenGeneralSolution(**kwargs)
+    """Abstract base class for generating (feature, label) pairs."""
+    
+    def __init__(self, gen_solution=None, **kwargs):
+        if gen_solution is None:
+            self.gen_solution = GenGeneralSolution(**kwargs)
+        else:
+            self.gen_solution = gen_solution
         
     @staticmethod
     def sol_func(point, solution):
+        """Takes a :point: and a :solution: and returns a (feature, label) pair."""
         raise NotImplementedError
         
     def thread_prepare(self, thread, max_thread):
+        """Should be called at the start of each thread, so that each thread
+        has different random initialisation. Should be told the maximum number
+        of threads, :max_thread:, and which :thread: it is, which should be an
+        integer in range(0, max_thread).
+        """
         self.gen_solution.thread_prepare(thread, max_thread)
         
     def __call__(self):
+        """Generates a (feature, label) pair."""
         while True:
             point, solution = self.gen_solution()
             X, y = self.sol_func(point, solution)

@@ -32,7 +32,7 @@ class RegressorFactoryBase:
     # for whether the regressor uses TensorFlow
     
     def __call__(self, **kwargs):
-        # Should return the regressor itself
+        """Creates the regressor that this factory defines."""
         raise NotImplementedError
         
             
@@ -54,6 +54,30 @@ class DNNFactory(RegressorFactoryBase):
                  kernel_initializer=tfi.truncated_normal(mean=0, stddev=0.05),
                  compile_kwargs=None,
                  **kwargs):
+        """Defines the parameters for creating a neural network. It does so by
+        assembling layers in Sequential, and then calling compile.
+        
+        Arguments:
+        :[int] hidden_units: A list of integers describing the number of
+            neurons in each hidden layer.
+        :int logits: The number of output logits.
+        :processor: A processor for performing preprocessing to the
+            features and labels. Defaults to no preprocessing.
+        :activation: The activation function for the hidden units.
+            Defaults to tf.nn.relu.
+        :float drop_rate: A number in the interval [0, 1) for the drop rate.
+            Defaults to 0.
+        :str drop_type: Either 'dropout' or 'alpha', the latter being for SELU
+            activation functions. Defaults to 'dropout'.
+        :int log_steps: How frequently to log results to stdout during training.
+            Defaults to 1000.
+        :bool batch_norm: Whether or not to perform batch normalization.
+            Defaults to False.
+        :kernel_initializer: The function for initializing weights. Defaults
+            to tf.initializers.truncated_normal(mean=0, stddev=0.05)
+        :dict compile_kwargs: Keyword arguments to be passed on to the call to
+            compile during DNN creation.
+        """
         if compile_kwargs is None:
             compile_kwargs = {}
         self.hidden_units = hidden_units
@@ -92,10 +116,11 @@ class DNNFactory(RegressorFactoryBase):
     
 class RegressorFactory(RegressorFactoryBase):
     """Factory wrapper around any regressor which doesn't use TensorFlow; i.e.
-    the interpolators above, or RegressorAverager (whether or not
-    RegressorAverager itself is using TensorFlow-based regressors.)"""
+    naive interpolators, or RegressorAverager (whether or not RegressorAverager 
+    itself is using TensorFlow-based regressors.)"""
     
     def __init__(self, regressor, **kwargs):
+        """The argument :regressor: is the regressor that is produced."""
         self.regressor = regressor
         self.compile_kwargs = tools.Object(processor=pc.IdentityProcessor())
         self.use_tf = False
