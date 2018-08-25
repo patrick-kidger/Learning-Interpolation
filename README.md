@@ -48,4 +48,4 @@ jupyter lab
 
 There are a few main scripts for doing the actual learning in the project/ directory; each can be run on its own. For testing their results, and testing things about the project in general, there are a few (somewhat ad-hoc) scripts in project/test/.
 
-The base code providing the system on which all of this is built is found in the project/base/ directory. The saved models are (surprise) saved to the project/saved_models/ directory.
+The base code providing the system on which all of this is built is found in the project/base/ directory. The saved models are (surprise) saved to the project/saved_models/ directory, although these have not been uploaded to GitHub!
