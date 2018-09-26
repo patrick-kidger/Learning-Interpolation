@@ -120,7 +120,7 @@ class ScaleOverall(ProcessorBase):
         super(ScaleOverall, self).__init__(**kwargs)
         
     def init(self, model_dir):
-        super(NormalisationOverall, self).init(model_dir)
+        super(ScaleOverall, self).init(model_dir)
         self.momentum_tf = tf.Variable(self.momentum, trainable=False, dtype=tf.float64)
         self.mean_tf = tf.Variable(self.mean, trainable=False, dtype=tf.float64)
         self.extent_tf = tf.Variable(self.extent, trainable=False, dtype=tf.float64)
