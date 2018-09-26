@@ -117,7 +117,7 @@ class ScaleOverall(ProcessorBase):
         self.mean = 0.0
         self.extent = 1.0
         self._started = False
-        super(ScaleDataOverall, self).__init__(**kwargs)
+        super(ScaleOverall, self).__init__(**kwargs)
         
     def init(self, model_dir):
         super(NormalisationOverall, self).init(model_dir)
