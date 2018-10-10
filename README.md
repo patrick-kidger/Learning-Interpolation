@@ -34,13 +34,13 @@ git checkout 00e3f8009e0a0b4288812a6da78272edf6a6475e
 Install the repo itself (anywhere you like):
 
 ```
-git clone https://github.com/patrick-kidger/camassaholmproject.git
+git clone https://github.com/patrick-kidger/machinelearninginterpolation.git
 ```
 
 Navigate to the repo and run Jupyter to start playing around:
 
 ```
-cd camassaholmproject
+cd machinelearninginterpolation
 jupyter lab
 ```
 
