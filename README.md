@@ -4,6 +4,8 @@ A project seeking to investigate the possibility of using machine learning to pe
 
 Our PDE of choice for this project is the [Camassa&ndash;Holm equation](https://en.wikipedia.org/wiki/Camassa-Holm_equation).
 
+Melding these techniques with traditional numerical analysis methods offers substantially faster numerical evaluation of PDEs!
+
 ### Installation
 
 Assumptions:
